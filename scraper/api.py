@@ -293,12 +293,11 @@ def fetch_site_summary(url: str):
         return {"ok": False, "error": "Il sito ha risposto con un errore o un reindirizzamento non seguito per sicurezza"}
 
     title, text = _strip_html_text(html, max_chars=4000)
-    if len(text) < 200:
-        return {
-            "ok": False,
-            "error": "Il sito sembra generato via JavaScript: il contenuto non è leggibile senza eseguirlo in un browser",
-        }
 
+    # Prova la pagina "chi siamo"/"about" PRIMA di giudicare la home troppo
+    # scarna per essere utile: è normalissimo che un'azienda tenga la home
+    # quasi solo a slogan/hero visivo e la sostanza su una pagina interna —
+    # bocciare qui perderebbe contenuto vero che è a un click di distanza.
     about_url = _find_about_link(html, url)
     if about_url and _is_safe_url(about_url):
         try:
@@ -309,5 +308,15 @@ def fetch_site_summary(url: str):
             _, about_text = _strip_html_text(about_html, max_chars=2500)
             if about_text:
                 text = text + "\n\n[Pagina 'chi siamo'/'about']\n" + about_text
+
+    # Solo ORA, dopo aver dato una chance alla pagina "chi siamo", un testo
+    # ancora troppo scarno è più probabilmente un sito reso via JavaScript
+    # (il server vede solo lo scheletro, il contenuto vero lo genera il
+    # browser) che una pagina reale genuinamente minimale.
+    if len(text) < 120:
+        return {
+            "ok": False,
+            "error": "Il sito sembra generato via JavaScript: il contenuto non è leggibile senza eseguirlo in un browser",
+        }
 
     return {"ok": True, "title": title, "testo": text[:6000]}
