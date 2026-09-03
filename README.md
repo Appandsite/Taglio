@@ -25,7 +25,14 @@ taglio-project/
 ├── site/
 │   └── taglio-demo.html      → frontend: wizard onboarding + dashboard risultati
 │                                (chiama l'API di Claude per le idee creative,
-│                                 e il backend locale per l'allocazione testate)
+│                                 e il backend Render per l'allocazione testate)
+├── docs/
+│   └── index.html            → COPIA di site/taglio-demo.html, serve solo a
+│                                GitHub Pages (che pubblica da /docs o dalla
+│                                root, non da sottocartelle a piacere). Dopo
+│                                ogni modifica a site/taglio-demo.html vanno
+│                                copiati anche qui, altrimenti la versione
+│                                pubblica su GitHub Pages resta indietro.
 └── scraper/
     ├── scraper.py             → visita le testate e rileva gli ad slot attivi
     ├── taxonomy.py            → mappa settore azienda -> categorie di testate
@@ -149,6 +156,24 @@ backend locale, con fallback mock per le idee).
    presidiare meno, esplicitamente presentate come ipotesi da validare, non
    dati misurati (a differenza dei segnali sopra, questi vengono dal
    ragionamento del modello, non dallo scraping).
+7. **Sito pubblico senza account Claude**: l'artifact su claude.ai richiede
+   un account per essere aperto. Per un link davvero pubblico, `docs/`
+   contiene una copia del sito pensata per **GitHub Pages**:
+   - Su GitHub: repo → **Settings → Pages** → Source: **Deploy from a
+     branch** → Branch: **main**, cartella **/docs** → **Save**.
+   - Se l'opzione Pages non compare (capita sui repo privati dei piani
+     gratuiti più vecchi), rendi il repo pubblico da **Settings → Danger
+     Zone → Change visibility** — il progetto non contiene chiavi o dati
+     sensibili, è sicuro farlo.
+   - URL risultante: `https://<utente>.github.io/<repo>/`.
+   - **Compromesso**: su GitHub Pages la generazione idee via AI (che
+     chiama l'API di Claude direttamente dal browser) non funziona — è
+     una capacità disponibile solo dentro l'ambiente artifact di
+     Claude.ai — quindi scatta sempre il fallback con le idee di esempio.
+     Budget, testate e contatti (dal backend Render) restano invece
+     pienamente reali e funzionanti.
+   - Ricorda: `docs/index.html` è una copia di `site/taglio-demo.html`,
+     va aggiornata a mano dopo ogni modifica al sito (vedi sopra).
 
 ## Limiti da conoscere: identificazione dei competitor
 
