@@ -1,0 +1,12 @@
+# Blueprint per il deploy su Render (render.com/docs/blueprint-spec).
+# In dashboard Render: New > Blueprint, punta al repo, root directory "scraper".
+# aggregated.json va aggiunto al repo (o generato da un build/cron job a parte)
+# perché il servizio serve solo file statici già presenti al deploy — vedi
+# la sezione "Deploy del backend online" nel README del progetto.
+services:
+  - type: web
+    name: taglio-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT

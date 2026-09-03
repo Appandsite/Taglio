@@ -1,0 +1,785 @@
+[
+  {
+    "nome": "Il Sole 24 Ore",
+    "formato": "150x188",
+    "formato_categoria": "default",
+    "quota": 14.5,
+    "segnali_osservati": 45,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "google.com/pagead",
+      "googlesyndication.com",
+      "openx.net",
+      "outbrain.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com",
+      "taboola.com"
+    ],
+    "categorie": [
+      "finanza"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sotto la piega",
+      "inserzionisti_rilevati_qui": 1,
+      "inserzionisti_rilevati_altrove": {
+        "sopra la piega": 6
+      }
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Libero Quotidiano",
+    "formato": "300x250",
+    "formato_categoria": "native",
+    "quota": 11.3,
+    "segnali_osservati": 35,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "openx.net",
+      "outbrain.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sopra la piega",
+      "inserzionisti_rilevati_qui": 9,
+      "inserzionisti_rilevati_altrove": {}
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "La Gazzetta del Mezzogiorno",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 8.4,
+    "segnali_osservati": 26,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adition.com",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "openx.net",
+      "outbrain.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "La Repubblica",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 7.1,
+    "segnali_osservati": 22,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "google.com/pagead",
+      "googlesyndication.com",
+      "outbrain.com",
+      "pubmatic.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": "https://www.manzoniadvertising.com/it/?ref=hpfoot"
+  },
+  {
+    "nome": "La Nuova Sardegna",
+    "formato": "970x250",
+    "formato_categoria": "banner",
+    "quota": 6.4,
+    "segnali_osservati": 20,
+    "domini_ad_distinti": [
+      "amazon-adsystem.com",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "rubiconproject.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "amazon-adsystem.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sopra la piega",
+      "inserzionisti_rilevati_qui": 1,
+      "inserzionisti_rilevati_altrove": {}
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Gazzetta del Sud",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 5.8,
+    "segnali_osservati": 18,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "openx.net",
+      "outbrain.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Il Giornale",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 5.5,
+    "segnali_osservati": 17,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "openx.net",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com",
+      "taboola.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sopra la piega",
+      "inserzionisti_rilevati_qui": 2,
+      "inserzionisti_rilevati_altrove": {}
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Giornale di Sicilia",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 4.8,
+    "segnali_osservati": 15,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "openx.net",
+      "outbrain.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Il Piccolo",
+    "formato": "970x250",
+    "formato_categoria": "banner",
+    "quota": 4.8,
+    "segnali_osservati": 15,
+    "domini_ad_distinti": [
+      "amazon-adsystem.com",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "pubmatic.com",
+      "rubiconproject.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "amazon-adsystem.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sopra la piega",
+      "inserzionisti_rilevati_qui": 1,
+      "inserzionisti_rilevati_altrove": {
+        "sotto la piega": 1
+      }
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Tuttosport",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 4.8,
+    "segnali_osservati": 15,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adition.com",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "google.com/pagead",
+      "googlesyndication.com",
+      "openx.net",
+      "outbrain.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "sport"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "criteo.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sopra la piega",
+      "inserzionisti_rilevati_qui": 1,
+      "inserzionisti_rilevati_altrove": {}
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Corriere dello Sport",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 3.5,
+    "segnali_osservati": 11,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "sport"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "adnxs.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "L'Espresso",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 3.2,
+    "segnali_osservati": 10,
+    "domini_ad_distinti": [
+      "adnxs.com",
+      "casalemedia.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "outbrain.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "L'Eco di Bergamo",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 2.9,
+    "segnali_osservati": 9,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "criteo.com",
+      "doubleclick.net",
+      "google.com/pagead",
+      "googlesyndication.com",
+      "outbrain.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "adnxs.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Il Fatto Quotidiano",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 2.6,
+    "segnali_osservati": 8,
+    "domini_ad_distinti": [
+      "casalemedia.com",
+      "criteo.com",
+      "doubleclick.net",
+      "google.com/pagead",
+      "googlesyndication.com",
+      "pubmatic.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "googlesyndication.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Domani",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 2.3,
+    "segnali_osservati": 7,
+    "domini_ad_distinti": [
+      "adnxs.com",
+      "criteo.com",
+      "criteo.net",
+      "doubleclick.net",
+      "google.com/pagead",
+      "googlesyndication.com",
+      "pubmatic.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "criteo.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Il Mattino",
+    "formato": "970x250",
+    "formato_categoria": "banner",
+    "quota": 1.9,
+    "segnali_osservati": 6,
+    "domini_ad_distinti": [
+      "amazon-adsystem.com",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "outbrain.com",
+      "rubiconproject.com",
+      "smartadserver.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "amazon-adsystem.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sotto la piega",
+      "inserzionisti_rilevati_qui": 1,
+      "inserzionisti_rilevati_altrove": {}
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Il Messaggero",
+    "formato": "300x600",
+    "formato_categoria": "native",
+    "quota": 1.6,
+    "segnali_osservati": 5,
+    "domini_ad_distinti": [
+      "amazon-adsystem.com",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "outbrain.com",
+      "rubiconproject.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "amazon-adsystem.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sopra la piega",
+      "inserzionisti_rilevati_qui": 1,
+      "inserzionisti_rilevati_altrove": {}
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Corriere Adriatico",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 1.6,
+    "segnali_osservati": 5,
+    "domini_ad_distinti": [
+      "amazon-adsystem.com",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "outbrain.com",
+      "rubiconproject.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "amazon-adsystem.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Quotidiano di Puglia",
+    "formato": "300x250",
+    "formato_categoria": "native",
+    "quota": 1.6,
+    "segnali_osservati": 5,
+    "domini_ad_distinti": [
+      "amazon-adsystem.com",
+      "doubleclick.net",
+      "googlesyndication.com",
+      "outbrain.com",
+      "rubiconproject.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "amazon-adsystem.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": {
+      "zona": "sopra la piega",
+      "inserzionisti_rilevati_qui": 1,
+      "inserzionisti_rilevati_altrove": {}
+    },
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Famiglia Cristiana",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 1.6,
+    "segnali_osservati": 5,
+    "domini_ad_distinti": [
+      "adform.net",
+      "adnxs.com",
+      "amazon-adsystem.com",
+      "doubleclick.net",
+      "googlesyndication.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "amazon-adsystem.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Corriere della Sera",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 1.0,
+    "segnali_osservati": 3,
+    "domini_ad_distinti": [
+      "amazon-adsystem.com",
+      "doubleclick.net",
+      "rubiconproject.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "amazon-adsystem.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Il Quotidiano del Sud",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 1.0,
+    "segnali_osservati": 3,
+    "domini_ad_distinti": [
+      "doubleclick.net",
+      "googlesyndication.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "googlesyndication.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "L'Unione Sarda",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 0.6,
+    "segnali_osservati": 2,
+    "domini_ad_distinti": [
+      "doubleclick.net",
+      "googlesyndication.com"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "googlesyndication.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "La Gazzetta dello Sport",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 0.6,
+    "segnali_osservati": 2,
+    "domini_ad_distinti": [
+      "doubleclick.net",
+      "googlesyndication.com"
+    ],
+    "categorie": [
+      "sport"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "googlesyndication.com",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "La Stampa",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 0.3,
+    "segnali_osservati": 1,
+    "domini_ad_distinti": [
+      "doubleclick.net"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  },
+  {
+    "nome": "Avvenire",
+    "formato": "Formato vario",
+    "formato_categoria": "default",
+    "quota": 0.3,
+    "segnali_osservati": 1,
+    "domini_ad_distinti": [
+      "doubleclick.net"
+    ],
+    "categorie": [
+      "generalista"
+    ],
+    "prima_osservazione": "2026-09-03",
+    "ultima_osservazione": "2026-09-03",
+    "giorni_scansionati": 1,
+    "campagna_probabile": {
+      "dominio": "doubleclick.net",
+      "giorni_consecutivi": 1
+    },
+    "posizionamento_consigliato": null,
+    "contatto_pubblicitario_url": null
+  }
+]

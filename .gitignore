@@ -1,0 +1,8 @@
+# Ambiente Python locale
+venv/
+__pycache__/
+*.pyc
+
+# Scan grezzi: file di lavoro locali, non servono al deploy (solo
+# aggregated.json, già aggregato, va committato)
+scraper/out/

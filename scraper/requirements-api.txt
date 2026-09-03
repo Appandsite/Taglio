@@ -1,0 +1,7 @@
+# Dipendenze per il solo servizio web (api.py), separate da requirements.txt
+# che include anche playwright/pyyaml necessari allo scraper. Lo scraper gira
+# in locale (o via cron su una macchina tua), non sul servizio di deploy: qui
+# serve solo il minimo per rispondere alle richieste con aggregated.json,
+# così la build resta leggera e veloce sui piani gratuiti.
+fastapi>=0.110
+uvicorn>=0.29

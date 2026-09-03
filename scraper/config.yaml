@@ -1,0 +1,221 @@
+# Lista ampia di testate italiane da monitorare, organizzata per categoria.
+# Ogni testata ha un campo "categorie": lo scraper lo usa per filtrare quali
+# testate scansionare in base al settore dell'azienda (--settore), così non
+# perdi tempo a controllare testate palesemente non pertinenti.
+#
+# Categorie usate: generalista, finanza, sport, gossip, lifestyle, moda,
+# tech, automotive, food. Una testata può averne più di una.
+#
+# Esempio: python scraper.py --settore automotive
+# scansiona solo le testate con categoria "generalista", "automotive" o "sport".
+#
+# Nota sulla verifica: i domini dei quotidiani nazionali, economici, sportivi
+# e dei principali settimanali sono stati verificati. Per la stampa locale ho
+# incluso solo le testate di cui sono ragionevolmente certo del dominio. Se
+# vuoi aggiungerne altre, dimmelo e verifico il dominio prima.
+
+testate:
+
+  # --- Quotidiani generalisti nazionali ---
+  - name: "Corriere della Sera"
+    url: "https://www.corriere.it"
+    categorie: [generalista]
+  - name: "La Repubblica"
+    url: "https://www.repubblica.it"
+    categorie: [generalista]
+  - name: "La Stampa"
+    url: "https://www.lastampa.it"
+    categorie: [generalista]
+  - name: "Il Messaggero"
+    url: "https://www.ilmessaggero.it"
+    categorie: [generalista]
+  - name: "Il Fatto Quotidiano"
+    url: "https://www.ilfattoquotidiano.it"
+    categorie: [generalista]
+  - name: "Il Giornale"
+    url: "https://www.ilgiornale.it"
+    categorie: [generalista]
+  - name: "Libero Quotidiano"
+    url: "https://www.liberoquotidiano.it"
+    categorie: [generalista]
+  - name: "Avvenire"
+    url: "https://www.avvenire.it"
+    categorie: [generalista]
+  - name: "Il Manifesto"
+    url: "https://ilmanifesto.it"
+    categorie: [generalista]
+  - name: "Domani"
+    url: "https://www.editorialedomani.it"
+    categorie: [generalista]
+  - name: "La Verità"
+    url: "https://www.laverita.info"
+    categorie: [generalista]
+  - name: "Il Resto del Carlino"
+    url: "https://www.ilrestodelcarlino.it"
+    categorie: [generalista]
+  - name: "La Nazione"
+    url: "https://www.lanazione.it"
+    categorie: [generalista]
+  - name: "Il Giorno"
+    url: "https://www.ilgiorno.it"
+    categorie: [generalista]
+  - name: "Il Secolo XIX"
+    url: "https://www.ilsecoloxix.it"
+    categorie: [generalista]
+  - name: "Il Mattino"
+    url: "https://www.ilmattino.it"
+    categorie: [generalista]
+  - name: "Il Tempo"
+    url: "https://www.iltempo.it"
+    categorie: [generalista]
+
+  # --- Quotidiani regionali e locali ---
+  - name: "Giornale di Sicilia"
+    url: "https://gds.it"
+    categorie: [generalista]
+  - name: "Gazzetta del Sud"
+    url: "https://gazzettadelsud.it"
+    categorie: [generalista]
+  - name: "La Gazzetta del Mezzogiorno"
+    url: "https://www.lagazzettadelmezzogiorno.it"
+    categorie: [generalista]
+  - name: "Il Quotidiano del Sud"
+    url: "https://quotidianodelsud.it"
+    categorie: [generalista]
+  - name: "Quotidiano di Sicilia"
+    url: "https://www.qds.it"
+    categorie: [generalista]
+  - name: "Il Tirreno"
+    url: "https://iltirreno.gelocal.it"
+    categorie: [generalista]
+  - name: "Il Piccolo"
+    url: "https://ilpiccolo.gelocal.it"
+    categorie: [generalista]
+  - name: "La Nuova Sardegna"
+    url: "https://www.lanuovasardegna.it"
+    categorie: [generalista]
+  - name: "L'Unione Sarda"
+    url: "https://www.unionesarda.it"
+    categorie: [generalista]
+  - name: "L'Eco di Bergamo"
+    url: "https://www.ecodibergamo.it"
+    categorie: [generalista]
+  - name: "Corriere Adriatico"
+    url: "https://www.corriereadriatico.it"
+    categorie: [generalista]
+  - name: "Quotidiano di Puglia"
+    url: "https://www.quotidianodipuglia.it"
+    categorie: [generalista]
+
+  # --- Economia e finanza ---
+  - name: "Il Sole 24 Ore"
+    url: "https://www.ilsole24ore.com"
+    categorie: [finanza]
+  - name: "MF Milano Finanza"
+    url: "https://www.milanofinanza.it"
+    categorie: [finanza]
+  - name: "Italia Oggi"
+    url: "https://www.italiaoggi.it"
+    categorie: [finanza]
+
+  # --- Sport ---
+  - name: "La Gazzetta dello Sport"
+    url: "https://www.gazzetta.it"
+    categorie: [sport]
+  - name: "Corriere dello Sport"
+    url: "https://www.corrieredellosport.it"
+    categorie: [sport]
+  - name: "Tuttosport"
+    url: "https://www.tuttosport.com"
+    categorie: [sport]
+
+  # --- Settimanali di attualità ---
+  - name: "Panorama"
+    url: "https://www.panorama.it"
+    categorie: [generalista]
+  - name: "L'Espresso"
+    url: "https://espresso.repubblica.it"
+    categorie: [generalista]
+  - name: "Internazionale"
+    url: "https://www.internazionale.it"
+    categorie: [generalista]
+  - name: "Focus"
+    url: "https://www.focus.it"
+    categorie: [generalista]
+  - name: "Famiglia Cristiana"
+    url: "https://www.famigliacristiana.it"
+    categorie: [generalista]
+
+  # --- Rotocalchi e settimanali di gossip ---
+  - name: "Gente"
+    url: "https://www.gente.it"
+    categorie: [gossip, lifestyle]
+  - name: "Oggi"
+    url: "https://www.oggi.it"
+    categorie: [gossip, lifestyle]
+  - name: "Chi"
+    url: "https://www.chimagazine.it"
+    categorie: [gossip, lifestyle]
+  - name: "Novella 2000"
+    url: "https://www.novella2000.it"
+    categorie: [gossip, lifestyle]
+  - name: "DiPiù"
+    url: "https://www.dipiu.it"
+    categorie: [gossip, lifestyle]
+
+  # --- Femminili e lifestyle ---
+  - name: "Grazia"
+    url: "https://www.grazia.it"
+    categorie: [moda, lifestyle, gossip]
+  - name: "Donna Moderna"
+    url: "https://www.donnamoderna.com"
+    categorie: [moda, lifestyle, gossip]
+  - name: "Io Donna"
+    url: "https://www.iodonna.it"
+    categorie: [moda, lifestyle, gossip]
+  - name: "Amica"
+    url: "https://www.amica.it"
+    categorie: [moda, lifestyle]
+  - name: "Vanity Fair Italia"
+    url: "https://www.vanityfair.it"
+    categorie: [moda, lifestyle, gossip]
+  - name: "GQ Italia"
+    url: "https://www.gqitalia.it"
+    categorie: [moda, lifestyle]
+  - name: "Elle Italia"
+    url: "https://www.elle.com/it"
+    categorie: [moda, lifestyle]
+
+  # --- Tecnologia ---
+  - name: "Wired Italia"
+    url: "https://www.wired.it"
+    categorie: [tech]
+  - name: "HDblog"
+    url: "https://www.hdblog.it"
+    categorie: [tech]
+  - name: "DDay.it"
+    url: "https://www.dday.it"
+    categorie: [tech]
+  - name: "Tom's Hardware Italia"
+    url: "https://www.tomshw.it"
+    categorie: [tech]
+  - name: "Punto Informatico"
+    url: "https://www.punto-informatico.it"
+    categorie: [tech]
+  - name: "Hardware Upgrade"
+    url: "https://www.hwupgrade.it"
+    categorie: [tech]
+
+  # --- Motori, food e altri verticali ---
+  - name: "Quattroruote"
+    url: "https://www.quattroruote.it"
+    categorie: [automotive]
+  - name: "Gambero Rosso"
+    url: "https://www.gamberorosso.it"
+    categorie: [food]
+  - name: "La Cucina Italiana"
+    url: "https://www.lacucinaitaliana.it"
+    categorie: [food]
+  - name: "Dissapore"
+    url: "https://www.dissapore.com"
+    categorie: [food]
