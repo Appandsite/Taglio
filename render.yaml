@@ -1,0 +1,16 @@
+# Blueprint per il deploy su Render (render.com/docs/blueprint-spec).
+# Deve stare nella ROOT del repository perché Render lo trovi automaticamente
+# quando crei un nuovo Blueprint — "rootDir" dice poi a Render di eseguire i
+# comandi dentro scraper/, dove vivono effettivamente api.py e i requirements.
+#
+# aggregated.json va tenuto aggiornato nel repo (commit dopo ogni scan+aggregate
+# locale) perché il servizio serve solo dati già generati, non fa scraping da
+# solo — vedi la sezione "Deploy del backend online" nel README.
+services:
+  - type: web
+    name: taglio-api
+    runtime: python
+    plan: free
+    rootDir: scraper
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT

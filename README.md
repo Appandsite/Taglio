@@ -18,6 +18,10 @@ specificamente un competitor con nome è posizionato — vedi limiti sotto.
 
 ```
 taglio-project/
+├── render.yaml                → blueprint di deploy per Render (deve stare
+│                                 in root perché Render lo trovi da solo;
+│                                 "rootDir: scraper" al suo interno gli dice
+│                                 poi dove girano davvero i comandi)
 ├── site/
 │   └── taglio-demo.html      → frontend: wizard onboarding + dashboard risultati
 │                                (chiama l'API di Claude per le idee creative,
@@ -30,8 +34,8 @@ taglio-project/
     ├── api.py                 → backend FastAPI che serve i dati al sito
     ├── requirements.txt       → dipendenze scraper + API (uso locale)
     ├── requirements-api.txt   → solo dipendenze API, per il deploy online
-    ├── Procfile               → comando di avvio per Render/Railway
-    └── render.yaml            → blueprint di deploy per Render
+    └── Procfile               → comando di avvio, alternativa a render.yaml
+                                  (es. per Railway, che non legge render.yaml)
 ```
 
 **Flusso dati**: `scraper.py` produce JSON grezzi → `aggregator.py` li
@@ -78,7 +82,7 @@ backend locale, con fallback mock per le idee).
 | Allocazione budget per testata | Reale se il backend è attivo e ha dati, altrimenti mock |
 | Stima prezzi | Modello indicativo da benchmark pubblici, non tariffe ufficiali |
 | Mockup grafico idee | Generato client-side (SVG), layout di riferimento non asset finale |
-| Backend online (non-localhost) | File di deploy pronti — vedi sotto, manca solo l'account sul servizio |
+| Backend online (non-localhost) | Codice su GitHub, deploy Render in corso — vedi sotto |
 | Gestione cookie banner nello scraper | Fatto |
 | Storico nel tempo (durata campagne) | Fatto |
 | Piano tarato sul budget (non sempre i grandi nazionali) | Fatto |
@@ -99,20 +103,23 @@ backend locale, con fallback mock per le idee).
    — campo `campagna_probabile` in `aggregated.json`, mostrato nel sito come
    badge "Campagna in corso da N giorni" quando lo streak è di almeno 2
    giorni. Il segnale migliora accumulando più scansioni via cron.
-3. **Deploy del backend online**: `Procfile`, `render.yaml` e
-   `requirements-api.txt` sono già pronti in `scraper/` per un deploy su
-   [Render](https://render.com) (piano free). Passi che restano da fare tu
-   (serve un account sul servizio, quindi non automatizzabili da qui):
-   - Metti il progetto su GitHub (o altro remote Git) se non lo è già.
-   - Su Render: **New → Blueprint**, collega il repo, imposta root directory
-     `scraper` (Render legge `render.yaml` automaticamente).
-   - Assicurati che `aggregated.json` sia committato nel repo prima del
-     deploy — il servizio serve solo dati già generati, non fa scraping da
-     solo (lo scraping resta un processo locale/cron, vedi sotto).
-   - Dopo ogni scan+aggregate locale, aggiorna `aggregated.json` nel repo e
-     fai un nuovo deploy (o commit, se hai auto-deploy da push attivo).
+3. ~~**Deploy del backend online**~~ — in corso: `render.yaml` (in root,
+   con `rootDir: scraper`), `Procfile` e `requirements-api.txt` sono pronti
+   per un deploy su [Render](https://render.com) (piano free). Il codice è
+   già su GitHub. Passi che restano da fare tu (serve un account sul
+   servizio, non automatizzabile da qui):
+   - Su Render: **New → Blueprint**, collega il repo `Taglio`. Render trova
+     `render.yaml` in root automaticamente e propone il servizio
+     `taglio-api` — conferma e avvia il deploy.
+   - `aggregated.json` deve restare committato nel repo (il servizio serve
+     solo dati già generati, non fa scraping da solo — lo scraping resta un
+     processo locale/cron, vedi sotto). Dopo ogni scan+aggregate locale,
+     `git add scraper/aggregated.json && git commit && git push`: se
+     l'auto-deploy di Render è attivo (lo è di default sul branch
+     collegato), il nuovo deploy parte da solo al push.
    - Aggiorna `CORS` in `api.py` (`allow_origins`) e `API_BASE_URL` in
-     `site/taglio-demo.html` con l'URL pubblico assegnato da Render.
+     `site/taglio-demo.html` con l'URL pubblico assegnato da Render (es.
+     `https://taglio-api.onrender.com`), poi ripubblica il sito.
 4. **Database persistente**: sostituire i file JSON con Postgres quando il
    volume di dati/testate cresce.
 5. ~~**Piano tarato sul budget + posizionamento per testata**~~ — fatto:
