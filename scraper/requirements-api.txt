@@ -5,3 +5,5 @@
 # così la build resta leggera e veloce sui piani gratuiti.
 fastapi>=0.110
 uvicorn>=0.29
+stripe>=10.0
+requests>=2.31

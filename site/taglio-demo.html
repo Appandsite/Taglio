@@ -78,6 +78,13 @@
     grid-template-columns:272px 1fr;
     min-height:100vh;
   }
+  /* [hidden] da solo non basta: le regole display:grid/flex qui sopra e
+  sotto (stessa specificità, ma "author" batte sempre lo UA stylesheet da
+  cui viene [hidden]{display:none}) lo sovrascriverebbero, lasciando
+  wizard o schermata di accesso visibili — e potenzialmente usabili — anche
+  quando dovrebbero essere nascosti. #id ha specificità più alta di .classe,
+  quindi queste regole vincono sempre. */
+  #appRoot[hidden], #authGate[hidden]{display:none;}
   /* ---------- Sidebar: fixed dark rail, deliberately theme-independent ---------- */
   .brand{
     background:#15171C;
@@ -383,11 +390,90 @@
     .panel{padding:34px 24px;}
     .row2, .obiettivo-cards{grid-template-columns:1fr;}
   }
+
+  /* ---------- Accesso e abbonamento ---------- */
+  .auth-gate{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:var(--paper);
+  }
+  .auth-card{
+    width:100%;
+    max-width:380px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    padding:36px 32px;
+    position:relative;
+  }
+  .auth-card::before,.auth-card::after{
+    content:"";
+    position:absolute;
+    width:12px;
+    height:12px;
+    pointer-events:none;
+  }
+  .auth-card::before{top:-1px;left:-1px;border-top:1.5px solid var(--cyan);border-left:1.5px solid var(--cyan);}
+  .auth-card::after{bottom:-1px;right:-1px;border-bottom:1.5px solid var(--cyan);border-right:1.5px solid var(--cyan);}
+  .auth-mark{font-family:'Fraunces',Georgia,serif;font-size:24px;font-weight:700;margin-bottom:10px;}
+  .auth-tag{font-size:13.5px;color:var(--ink-soft);margin-bottom:26px;line-height:1.5;}
+  .auth-actions{margin-top:26px;flex-wrap:wrap;}
+  .auth-error{font-size:13px;color:var(--magenta);margin:14px 0 0;line-height:1.45;}
+  .auth-hint{font-size:13px;color:var(--ink-soft);margin:14px 0 0;line-height:1.45;}
+  .user-bar{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#9DA0A8;}
+  .user-bar strong{color:#F1EFE9;font-weight:600;}
+  .user-bar button{
+    background:none;border:none;padding:0;color:#4CB2F2;font-size:12px;font-weight:600;
+    cursor:pointer;text-align:left;width:fit-content;
+  }
+  .usage-pill{
+    display:inline-block;
+    padding:2px 8px;
+    border:1px solid #383B42;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    width:fit-content;
+  }
+  .usage-pill.abbonato{border-color:#4CB2F2;color:#4CB2F2;}
+
+  .upsell-card{
+    border:1px solid var(--magenta);
+    padding:28px 30px;
+    max-width:56ch;
+  }
+  .upsell-price{font-family:'IBM Plex Mono',monospace;font-size:32px;font-weight:600;margin:18px 0;color:var(--ink);}
+  .upsell-price span{font-size:14px;color:var(--ink-soft);font-weight:400;}
 </style>
 </head>
 <body>
 
-<div class="app">
+<div class="auth-gate" id="authGate">
+  <div class="auth-card">
+    <div class="auth-mark">Taglio</div>
+    <p class="auth-tag" id="authTag">Accedi per usare il pianificatore — le prime 2 ricerche sono gratuite, poi 4,99€/mese.</p>
+
+    <div class="field">
+      <label for="authEmail">Email</label>
+      <input type="email" id="authEmail" placeholder="tuo@email.it" autocomplete="email">
+    </div>
+    <div class="field" style="margin-bottom:0;">
+      <label for="authPassword">Password</label>
+      <input type="password" id="authPassword" placeholder="Almeno 6 caratteri" autocomplete="current-password">
+    </div>
+
+    <p class="auth-error" id="authError" hidden></p>
+    <p class="auth-hint" id="authHint" hidden></p>
+
+    <div class="btn-row auth-actions">
+      <button class="btn btn-primary" id="authLoginBtn" type="button">Accedi</button>
+      <button class="btn btn-ghost" id="authSignupBtn" type="button">Registrati</button>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="appRoot" hidden>
   <aside class="brand">
     <div>
       <div class="brand-mark">Taglio</div>
@@ -399,10 +485,28 @@
       <li data-target="3"><span class="num">3</span> Budget</li>
       <li data-target="4"><span class="num">4</span> Risultati</li>
     </ol>
-    <div class="brand-foot">Demo dimostrativa — i dati mostrati sono simulati.</div>
+    <div class="brand-foot">
+      <div class="user-bar" id="userBar"></div>
+    </div>
   </aside>
 
   <main class="panel">
+
+    <!-- LIMITE RICERCHE RAGGIUNTO -->
+    <section class="step" id="step-upsell">
+      <div class="step-kicker">Limite ricerche gratuite</div>
+      <h2>Hai usato le 2 ricerche gratuite</h2>
+      <p class="step-intro">Per continuare a generare piani di posizionamento senza limiti, passa all'abbonamento.</p>
+      <div class="upsell-card">
+        <div class="idea-mech">Abbonamento Taglio</div>
+        <div class="upsell-price">€ 4,99 <span>/ mese, disdicibile quando vuoi</span></div>
+        <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.5;margin:0 0 4px;">Ricerche illimitate, dati reali aggiornati da 62 testate, contatti pubblicitari, idee creative AI.</p>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="checkoutBtn" type="button">Abbonati ora</button>
+      </div>
+      <p class="auth-error" id="checkoutError" hidden></p>
+    </section>
 
     <!-- STEP 1 -->
     <section class="step active" id="step-1">
@@ -571,7 +675,182 @@
   </main>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
+  // ---------- Accesso, registrazione, conteggio ricerche gratuite ----------
+  const SUPABASE_URL = 'https://oxuirmbgbwnegnqxfdjx.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94dWlybWJnYnduZWducXhmZGp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDg4NjYsImV4cCI6MjEwNDAyNDg2Nn0.4hjQsaHtjJjanckLYnEcCvk_em2I-P4xKyMwfmi-M18';
+  const RICERCHE_GRATUITE = 2;
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  let currentUser = null;
+  let currentProfile = null;
+
+  function showAuthGate(){
+    document.getElementById('authGate').hidden = false;
+    document.getElementById('appRoot').hidden = true;
+  }
+  function showApp(){
+    document.getElementById('authGate').hidden = true;
+    document.getElementById('appRoot').hidden = false;
+  }
+  function setAuthError(msg){
+    const el = document.getElementById('authError');
+    el.textContent = msg; el.hidden = !msg;
+  }
+  function setAuthHint(msg){
+    const el = document.getElementById('authHint');
+    el.textContent = msg; el.hidden = !msg;
+  }
+
+  // Messaggi in italiano per gli errori più comuni di Supabase Auth (che
+  // risponde in inglese) — un utente non tecnico non deve vedere "Invalid
+  // login credentials" senza traduzione.
+  function traduciErroreAuth(msg){
+    const m = (msg || '').toLowerCase();
+    if(m.includes('invalid login credentials')) return 'Email o password non corrette.';
+    if(m.includes('user already registered')) return 'Esiste già un account con questa email — prova ad accedere invece di registrarti.';
+    if(m.includes('password should be at least')) return 'La password deve avere almeno 6 caratteri.';
+    if(m.includes('unable to validate email')) return 'Indirizzo email non valido.';
+    if(m.includes('email not confirmed')) return 'Devi prima confermare l\'email: controlla la posta (anche lo spam) e clicca il link ricevuto alla registrazione.';
+    if(m.includes('email rate limit') || m.includes('rate limit')) return 'Troppi tentativi in poco tempo — aspetta qualche minuto e riprova.';
+    return msg || 'Si è verificato un errore imprevisto. Riprova.';
+  }
+
+  async function handleLogin(){
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    setAuthError(''); setAuthHint('');
+    if(!email || !password){ setAuthError('Inserisci email e password.'); return; }
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if(error){ setAuthError(traduciErroreAuth(error.message)); return; }
+    await onAuthenticated(data.user);
+  }
+
+  async function handleSignup(){
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    setAuthError(''); setAuthHint('');
+    if(!email || !password){ setAuthError('Inserisci email e password.'); return; }
+    if(password.length < 6){ setAuthError('La password deve avere almeno 6 caratteri.'); return; }
+    const { data, error } = await sb.auth.signUp({ email, password });
+    if(error){ setAuthError(traduciErroreAuth(error.message)); return; }
+    if(data.session){
+      await onAuthenticated(data.user);
+    } else {
+      setAuthHint('Registrazione avviata: controlla la tua email per confermare l\'account, poi accedi qui sopra.');
+    }
+  }
+
+  async function handleLogout(){
+    await sb.auth.signOut();
+    currentUser = null; currentProfile = null;
+    document.getElementById('authEmail').value = '';
+    document.getElementById('authPassword').value = '';
+    showAuthGate();
+  }
+
+  async function onAuthenticated(user){
+    currentUser = user;
+    const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
+    if(error || !data){
+      // Il trigger che crea il profilo alla registrazione a volte impiega
+      // un istante: un solo nuovo tentativo basta nella pratica.
+      await new Promise(r => setTimeout(r, 800));
+      const retry = await sb.from('profiles').select('*').eq('id', user.id).single();
+      currentProfile = retry.data;
+    } else {
+      currentProfile = data;
+    }
+    showApp();
+    renderUserBar();
+  }
+
+  function renderUserBar(){
+    const bar = document.getElementById('userBar');
+    if(!currentUser || !currentProfile){ bar.innerHTML = ''; return; }
+    const pillHtml = currentProfile.abbonato
+      ? `<span class="usage-pill abbonato">Abbonato</span>`
+      : `<span class="usage-pill">${currentProfile.ricerche_usate}/${RICERCHE_GRATUITE} ricerche gratuite</span>`;
+    bar.innerHTML = `
+      <strong>${currentUser.email}</strong>
+      ${pillHtml}
+      <button type="button" id="logoutBtn">Esci</button>
+    `;
+    document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+  }
+
+  // Ritorna true se l'utente può procedere con una nuova ricerca (e in tal
+  // caso registra subito il consumo), false se ha esaurito le gratuite e
+  // non è abbonato — nel qual caso mostra la schermata di abbonamento.
+  async function consumaRicercaSeConsentito(){
+    if(!currentProfile) return false;
+    if(currentProfile.abbonato) return true;
+    if(currentProfile.ricerche_usate >= RICERCHE_GRATUITE){
+      document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
+      document.getElementById('step-upsell').classList.add('active');
+      return false;
+    }
+    const nuovoConteggio = currentProfile.ricerche_usate + 1;
+    const { error } = await sb.from('profiles').update({ ricerche_usate: nuovoConteggio }).eq('id', currentUser.id);
+    if(!error) currentProfile.ricerche_usate = nuovoConteggio;
+    renderUserBar();
+    return true;
+  }
+
+  async function startCheckout(){
+    const btn = document.getElementById('checkoutBtn');
+    const errEl = document.getElementById('checkoutError');
+    errEl.hidden = true;
+    btn.disabled = true;
+    btn.textContent = 'Un attimo…';
+    try{
+      const res = await fetch(API_BASE_URL + '/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUser.id, email: currentUser.email })
+      });
+      if(!res.ok) throw new Error('status ' + res.status);
+      const data = await res.json();
+      window.location.href = data.url;
+    } catch(err){
+      console.error('Avvio pagamento non riuscito:', err);
+      errEl.textContent = 'Non è stato possibile avviare il pagamento in questo momento. Riprova tra poco.';
+      errEl.hidden = false;
+      btn.disabled = false;
+      btn.textContent = 'Abbonati ora';
+    }
+  }
+
+  document.getElementById('authLoginBtn').addEventListener('click', handleLogin);
+  document.getElementById('authSignupBtn').addEventListener('click', handleSignup);
+  document.getElementById('checkoutBtn').addEventListener('click', startCheckout);
+
+  // Al ritorno da Stripe dopo un pagamento riuscito, il profilo va
+  // ricaricato per vedere "abbonato" aggiornato (il webhook di Stripe lo
+  // scrive lato server, qui lo leggiamo di nuovo).
+  async function gestisciRitornoDaCheckout(){
+    const params = new URLSearchParams(window.location.search);
+    if(params.get('abbonamento') === 'ok' && currentUser){
+      for(let tentativo = 0; tentativo < 5; tentativo++){
+        const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+        if(data && data.abbonato){ currentProfile = data; renderUserBar(); break; }
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      history.replaceState({}, '', window.location.pathname);
+    }
+  }
+
+  (async function initAuth(){
+    const { data: { session } } = await sb.auth.getSession();
+    if(session){
+      await onAuthenticated(session.user);
+      await gestisciRitornoDaCheckout();
+    } else {
+      showAuthGate();
+    }
+  })();
+
   const state = { tone:null, competitors:[], obiettivo:'awareness', budget:15000 };
 
   document.querySelectorAll('#toneRow .chip').forEach(chip=>{
@@ -1170,6 +1449,9 @@
   });
 
   async function runAnalysis(){
+    const puoProcedere = await consumaRicercaSeConsentito();
+    if(!puoProcedere) return;
+
     goTo(4);
     document.getElementById('loadingView').style.display = 'flex';
     document.getElementById('resultsView').style.display = 'none';

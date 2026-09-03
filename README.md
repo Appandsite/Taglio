@@ -14,6 +14,10 @@ budget: lo scraper rileva reti pubblicitarie attive per testata, non le
 creatività dei singoli inserzionisti, quindi non può identificare dove
 specificamente un competitor con nome è posizionato — vedi limiti sotto.
 
+Accesso: richiede login (email + password, via Supabase Auth). Le prime 2
+ricerche sono gratuite per utente, poi serve un abbonamento di 4,99€/mese
+(Stripe) — vedi "Accesso e abbonamento" più sotto per la configurazione.
+
 ## Architettura
 
 ```
@@ -38,7 +42,8 @@ taglio-project/
     ├── taxonomy.py            → mappa settore azienda -> categorie di testate
     ├── config.yaml            → elenco testate (62), ciascuna con categorie
     ├── aggregator.py          → riassume gli scan grezzi per testata
-    ├── api.py                 → backend FastAPI che serve i dati al sito
+    ├── api.py                 → backend FastAPI: dati al sito + checkout
+    │                            e webhook Stripe per l'abbonamento
     ├── requirements.txt       → dipendenze scraper + API (uso locale)
     ├── requirements-api.txt   → solo dipendenze API, per il deploy online
     └── Procfile               → comando di avvio, alternativa a render.yaml
@@ -94,6 +99,9 @@ backend locale, con fallback mock per le idee).
 | Storico nel tempo (durata campagne) | Fatto |
 | Piano tarato sul budget (non sempre i grandi nazionali) | Fatto |
 | Suggerimento posizionamento per testata online | Fatto, ma è densità di inserzionisti per zona pagina, non identificazione di competitor specifici — vedi nota legale/limiti sotto |
+| Login/registrazione utenti | Fatto (Supabase Auth) |
+| Limite 2 ricerche gratuite + conteggio per utente | Fatto (Supabase) |
+| Abbonamento 4,99€/mese | Codice pronto, manca la configurazione Stripe — vedi "Accesso e abbonamento" |
 | Contatto pubblicitario per testata (link, non telefono/mail indovinati) | Fatto se lo scraper trova un link "Pubblicità" sul sito; altrimenti link diretto al sito reale della testata |
 | Punti di forza e spazi bianchi rispetto ai competitor | Reale (via API Claude, stesse ipotesi di lavoro delle idee creative), con fallback mock per settore |
 
@@ -174,6 +182,92 @@ backend locale, con fallback mock per le idee).
      pienamente reali e funzionanti.
    - Ricorda: `docs/index.html` è una copia di `site/taglio-demo.html`,
      va aggiornata a mano dopo ogni modifica al sito (vedi sopra).
+8. **Accesso e abbonamento**: login obbligatorio, 2 ricerche gratuite per
+   utente poi 4,99€/mese — vedi la sezione dedicata subito sotto per lo
+   stato attuale e cosa manca.
+
+## Accesso e abbonamento (Supabase + Stripe)
+
+**Stato**: login/registrazione e conteggio ricerche gratuite sono
+funzionanti (Supabase). Il pagamento vero (Stripe) non è ancora attivo — il
+codice è pronto ma senza le chiavi Stripe configurate su Render risponde
+con un errore gestito ("pagamenti non ancora configurati") invece di
+rompersi. Per attivarlo davvero mancano i passaggi 2 e 3 qui sotto.
+
+### 1. Supabase (fatto)
+
+Progetto: `oxuirmbgbwnegnqxfdjx` (regione EU, Londra). Tabella `profiles`,
+creata con questo schema (uno-a-uno con `auth.users`, un trigger la popola
+automaticamente alla registrazione, RLS abilitata così ogni utente vede
+solo il proprio profilo):
+
+```sql
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  ricerche_usate int not null default 0,
+  abbonato boolean not null default false,
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  created_at timestamptz not null default now()
+);
+
+create function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id) values (new.id);
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+alter table public.profiles enable row level security;
+create policy "Utenti leggono il proprio profilo"
+  on public.profiles for select using (auth.uid() = id);
+create policy "Utenti aggiornano il proprio profilo"
+  on public.profiles for update using (auth.uid() = id);
+```
+
+`SUPABASE_URL` e la chiave `anon` sono già nel codice di
+`site/taglio-demo.html` (sono pensate per stare nel frontend, non sono
+segrete). La chiave `service_role` invece **non va mai nel frontend**: la
+userà solo `api.py` sul backend, letta dalla variabile d'ambiente
+`SUPABASE_SERVICE_ROLE_KEY` su Render (Settings → Environment).
+
+### 2. Stripe (da fare)
+
+1. Crea un account su [stripe.com](https://stripe.com) (richiede dati
+   bancari/fiscali reali per incassare, ma si può iniziare in modalità
+   test).
+2. **Product catalog → Add product**: nome "Abbonamento Taglio", prezzo
+   ricorrente **4,99€ / mese**. Copia l'ID del prezzo (`price_...`).
+3. **Developers → API keys**: copia la **Secret key** (`sk_...`).
+4. **Developers → Webhooks → Add endpoint**: URL
+   `https://taglio-api.onrender.com/api/stripe-webhook`, eventi da
+   ascoltare: `checkout.session.completed`, `customer.subscription.updated`,
+   `customer.subscription.deleted`. Copia il **Signing secret** (`whsec_...`).
+
+### 3. Collegare tutto su Render (da fare)
+
+Su Render → servizio `taglio-api` → **Environment**, aggiungi:
+
+| Variabile | Valore |
+|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | dalla dashboard Supabase → Project Settings → API |
+| `STRIPE_SECRET_KEY` | dal passo 2.3 sopra |
+| `STRIPE_PRICE_ID` | dal passo 2.2 sopra |
+| `STRIPE_WEBHOOK_SECRET` | dal passo 2.4 sopra |
+| `SITE_URL` | `https://tmysceppa-ctrl.github.io/Taglio/` (o l'URL pubblico attuale) |
+
+Render riavvia il servizio da solo dopo aver salvato le variabili — non
+serve un nuovo deploy manuale. A quel punto il pulsante "Abbonati ora" nel
+sito porta davvero a una pagina di pagamento Stripe, e al pagamento andato
+a buon fine il webhook sblocca l'utente su Supabase.
+
+**Consiglio**: testa tutto prima con le chiavi Stripe in **modalità test**
+(carte di prova, nessun addebito reale) prima di passare alle chiavi live.
 
 ## Limiti da conoscere: identificazione dei competitor
 
