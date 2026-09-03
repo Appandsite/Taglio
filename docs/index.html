@@ -452,7 +452,7 @@
 <div class="auth-gate" id="authGate">
   <div class="auth-card">
     <div class="auth-mark">Taglio</div>
-    <p class="auth-tag" id="authTag">Accedi per usare il pianificatore — le prime 2 ricerche sono gratuite, poi 4,99€/mese.</p>
+    <p class="auth-tag" id="authTag">Accedi per usare il pianificatore — la prima ricerca è gratuita, poi 4,99€/mese.</p>
 
     <div class="field">
       <label for="authEmail">Email</label>
@@ -495,7 +495,7 @@
     <!-- LIMITE RICERCHE RAGGIUNTO -->
     <section class="step" id="step-upsell">
       <div class="step-kicker">Limite ricerche gratuite</div>
-      <h2>Hai usato le 2 ricerche gratuite</h2>
+      <h2>Hai usato la ricerca gratuita</h2>
       <p class="step-intro">Per continuare a generare piani di posizionamento senza limiti, passa all'abbonamento.</p>
       <div class="upsell-card">
         <div class="idea-mech">Abbonamento Taglio</div>
@@ -680,7 +680,7 @@
   // ---------- Accesso, registrazione, conteggio ricerche gratuite ----------
   const SUPABASE_URL = 'https://oxuirmbgbwnegnqxfdjx.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94dWlybWJnYnduZWducXhmZGp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDg4NjYsImV4cCI6MjEwNDAyNDg2Nn0.4hjQsaHtjJjanckLYnEcCvk_em2I-P4xKyMwfmi-M18';
-  const RICERCHE_GRATUITE = 2;
+  const RICERCHE_GRATUITE = 1;
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let currentUser = null;

@@ -14,8 +14,8 @@ budget: lo scraper rileva reti pubblicitarie attive per testata, non le
 creatività dei singoli inserzionisti, quindi non può identificare dove
 specificamente un competitor con nome è posizionato — vedi limiti sotto.
 
-Accesso: richiede login (email + password, via Supabase Auth). Le prime 2
-ricerche sono gratuite per utente, poi serve un abbonamento di 4,99€/mese
+Accesso: richiede login (email + password, via Supabase Auth). La prima
+ricerca è gratuita per utente, poi serve un abbonamento di 4,99€/mese
 (Stripe) — vedi "Accesso e abbonamento" più sotto per la configurazione.
 
 ## Architettura
@@ -100,8 +100,8 @@ backend locale, con fallback mock per le idee).
 | Piano tarato sul budget (non sempre i grandi nazionali) | Fatto |
 | Suggerimento posizionamento per testata online | Fatto, ma è densità di inserzionisti per zona pagina, non identificazione di competitor specifici — vedi nota legale/limiti sotto |
 | Login/registrazione utenti | Fatto (Supabase Auth) |
-| Limite 2 ricerche gratuite + conteggio per utente | Fatto (Supabase) |
-| Abbonamento 4,99€/mese | Codice pronto, manca la configurazione Stripe — vedi "Accesso e abbonamento" |
+| Limite 1 ricerca gratuita + conteggio per utente | Fatto (Supabase) |
+| Abbonamento 4,99€/mese | Fatto — Stripe collegato in modalità live, pagamenti reali |
 | Contatto pubblicitario per testata (link, non telefono/mail indovinati) | Fatto se lo scraper trova un link "Pubblicità" sul sito; altrimenti link diretto al sito reale della testata |
 | Punti di forza e spazi bianchi rispetto ai competitor | Reale (via API Claude, stesse ipotesi di lavoro delle idee creative), con fallback mock per settore |
 
@@ -182,17 +182,18 @@ backend locale, con fallback mock per le idee).
      pienamente reali e funzionanti.
    - Ricorda: `docs/index.html` è una copia di `site/taglio-demo.html`,
      va aggiornata a mano dopo ogni modifica al sito (vedi sopra).
-8. **Accesso e abbonamento**: login obbligatorio, 2 ricerche gratuite per
+8. **Accesso e abbonamento**: login obbligatorio, 1 ricerca gratuita per
    utente poi 4,99€/mese — vedi la sezione dedicata subito sotto per lo
    stato attuale e cosa manca.
 
 ## Accesso e abbonamento (Supabase + Stripe)
 
-**Stato**: login/registrazione e conteggio ricerche gratuite sono
-funzionanti (Supabase). Il pagamento vero (Stripe) non è ancora attivo — il
-codice è pronto ma senza le chiavi Stripe configurate su Render risponde
-con un errore gestito ("pagamenti non ancora configurati") invece di
-rompersi. Per attivarlo davvero mancano i passaggi 2 e 3 qui sotto.
+**Stato**: tutto attivo e funzionante — login/registrazione, conteggio
+ricerche gratuite (Supabase), creazione pagamento e sblocco abbonamento via
+webhook (Stripe, **modalità live**: i pagamenti sono reali). Se in futuro
+le chiavi Stripe dovessero mancare o essere revocate su Render,
+`/api/create-checkout-session` risponde con un errore gestito ("pagamenti
+non ancora configurati") invece di rompersi.
 
 ### 1. Supabase (fatto)
 
@@ -236,7 +237,7 @@ segrete). La chiave `service_role` invece **non va mai nel frontend**: la
 userà solo `api.py` sul backend, letta dalla variabile d'ambiente
 `SUPABASE_SERVICE_ROLE_KEY` su Render (Settings → Environment).
 
-### 2. Stripe (da fare)
+### 2. Stripe (fatto)
 
 1. Crea un account su [stripe.com](https://stripe.com) (richiede dati
    bancari/fiscali reali per incassare, ma si può iniziare in modalità
@@ -249,7 +250,7 @@ userà solo `api.py` sul backend, letta dalla variabile d'ambiente
    ascoltare: `checkout.session.completed`, `customer.subscription.updated`,
    `customer.subscription.deleted`. Copia il **Signing secret** (`whsec_...`).
 
-### 3. Collegare tutto su Render (da fare)
+### 3. Collegare tutto su Render (fatto)
 
 Su Render → servizio `taglio-api` → **Environment**, aggiungi:
 
