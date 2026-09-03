@@ -119,7 +119,7 @@ backend locale, con fallback mock per le idee).
    badge "Campagna in corso da N giorni" quando lo streak è di almeno 2
    giorni. Il segnale migliora accumulando più scansioni via cron.
 3. ~~**Deploy del backend online**~~ — fatto: il codice è su GitHub
-   (`github.com/tmysceppa-ctrl/Taglio`), il backend gira su Render come
+   (`github.com/Appandsite/Taglio`), il backend gira su Render come
    servizio `taglio-api` (piano free) su **https://taglio-api.onrender.com**,
    e `site/taglio-demo.html` (`API_BASE_URL`) punta lì invece che a
    localhost. `render.yaml` sta nella root del repo con `rootDir: scraper`:
@@ -260,7 +260,7 @@ Su Render → servizio `taglio-api` → **Environment**, aggiungi:
 | `STRIPE_SECRET_KEY` | dal passo 2.3 sopra |
 | `STRIPE_PRICE_ID` | dal passo 2.2 sopra |
 | `STRIPE_WEBHOOK_SECRET` | dal passo 2.4 sopra |
-| `SITE_URL` | `https://tmysceppa-ctrl.github.io/Taglio/` (o l'URL pubblico attuale) |
+| `SITE_URL` | `https://appandsite.github.io/Taglio/` (o l'URL pubblico attuale) |
 
 Render riavvia il servizio da solo dopo aver salvato le variabili — non
 serve un nuovo deploy manuale. A quel punto il pulsante "Abbonati ora" nel
