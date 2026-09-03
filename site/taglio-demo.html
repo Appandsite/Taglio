@@ -803,9 +803,9 @@
     }
   };
 
-  // Cambia questo URL con quello del tuo backend quando lo distribuisci online.
-  // In locale, mentre testi, prova con 'http://localhost:8000'.
-  const API_BASE_URL = 'http://localhost:8000';
+  // Backend online su Render. Per testare in locale invece, usa
+  // 'http://localhost:8000' con `uvicorn api:app --reload --port 8000`.
+  const API_BASE_URL = 'https://taglio-api.onrender.com';
 
   async function fetchAllocation(mockTestate, sectorKey){
     try{
