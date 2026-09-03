@@ -37,7 +37,7 @@ import re
 import socket
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 import stripe
@@ -221,35 +221,93 @@ def _strip_html_text(html: str, max_chars: int = 3000) -> tuple[str, str]:
     return title, text[:max_chars]
 
 
+def _fetch_raw_html(url: str, timeout: int = 8) -> Optional[str]:
+    resp = requests.get(
+        url,
+        timeout=timeout,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; TaglioBot/0.1)"},
+        allow_redirects=False,
+        stream=True,
+    )
+    if resp.status_code != 200:
+        return None
+    raw = resp.raw.read(300_000, decode_content=True)
+    # requests, quando il Content-Type non dichiara un charset esplicito,
+    # ripiega su ISO-8859-1 per lo standard HTTP — ma nella pratica la
+    # stragrande maggioranza dei siti oggi è UTF-8 senza dichiararlo (i
+    # browser fanno lo stesso ripiego). Usiamo l'encoding solo se dichiarato
+    # esplicitamente nell'header, altrimenti UTF-8.
+    content_type = resp.headers.get("content-type", "")
+    charset_match = re.search(r"charset=([\w-]+)", content_type, re.IGNORECASE)
+    encoding = charset_match.group(1) if charset_match else "utf-8"
+    try:
+        return raw.decode(encoding, errors="ignore")
+    except (LookupError, UnicodeDecodeError):
+        return raw.decode("utf-8", errors="ignore")
+
+
+# Testi/href comuni per la pagina "chi siamo": la home spesso è tutta
+# slogan ed hero visivo, i dettagli concreti su cosa fa davvero l'azienda
+# stanno più spesso in una pagina interna come questa.
+ABOUT_LINK_KEYWORDS = [
+    "chi siamo", "chi-siamo", "chisiamo", "l'azienda", "l azienda", "azienda",
+    "about", "about-us", "cosa facciamo", "la nostra storia", "company",
+]
+
+
+def _find_about_link(html: str, base_url: str) -> Optional[str]:
+    """Cerca nella homepage un link a una pagina 'chi siamo'/'about' sullo
+    stesso dominio (mai un altro sito: stesso principio prudenziale
+    dell'SSRF-check, qui per restare nello scope della pagina richiesta)."""
+    parsed_base = urlparse(base_url)
+    for match in re.finditer(r'<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL):
+        href = match.group(1)
+        link_text = re.sub(r"<[^>]+>", " ", match.group(2)).strip().lower()
+        href_lower = href.lower()
+        if any(kw in link_text or kw in href_lower for kw in ABOUT_LINK_KEYWORDS):
+            full_url = urljoin(base_url, href)
+            parsed_link = urlparse(full_url)
+            if parsed_link.scheme in ("http", "https") and parsed_link.netloc == parsed_base.netloc:
+                return full_url
+    return None
+
+
 @app.get("/api/fetch-site-summary")
 def fetch_site_summary(url: str):
     """Legge davvero il sito indicato (dell'azienda o di un competitor) per
     dare all'AI un contesto reale invece di ragionare sul solo nome/URL.
-    Fallisce in modo pulito (200 con 'ok': false) se il sito non è
-    raggiungibile, reindirizza altrove o blocca lo scraping — il frontend
-    prosegue senza quel contesto invece di bloccarsi."""
+    Se trova un link 'chi siamo'/'about' sullo stesso dominio, legge anche
+    quello: la home da sola spesso è poco più di uno slogan. Fallisce in
+    modo pulito (200 con 'ok': false) se il sito non è raggiungibile,
+    reindirizza altrove, blocca lo scraping, o è generato via JavaScript
+    (il server vede solo lo scheletro della pagina, non il contenuto reso
+    dal browser) — il frontend prosegue senza quel contesto invece di far
+    ragionare l'AI su testo vuoto o su un menu di navigazione."""
     if not _is_safe_url(url):
         return {"ok": False, "error": "URL non valido o non consentito"}
     try:
-        resp = requests.get(
-            url,
-            timeout=8,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; TaglioBot/0.1)"},
-            allow_redirects=False,
-            stream=True,
-        )
-        if resp.status_code in (301, 302, 303, 307, 308):
-            # Non seguiamo il redirect: la destinazione andrebbe rivalidata
-            # con lo stesso controllo SSRF, più semplice non seguirlo affatto.
-            return {"ok": False, "error": "Il sito reindirizza altrove, non l'ho seguito per sicurezza"}
-        if resp.status_code != 200:
-            return {"ok": False, "error": f"Il sito ha risposto con errore {resp.status_code}"}
-        raw = resp.raw.read(300_000, decode_content=True)
-        html = raw.decode(resp.encoding or "utf-8", errors="ignore")
+        html = _fetch_raw_html(url)
     except Exception:
         return {"ok": False, "error": "Sito non raggiungibile"}
+    if html is None:
+        return {"ok": False, "error": "Il sito ha risposto con un errore o un reindirizzamento non seguito per sicurezza"}
 
-    title, text = _strip_html_text(html)
-    if not text:
-        return {"ok": False, "error": "Nessun contenuto leggibile trovato sul sito"}
-    return {"ok": True, "title": title, "testo": text}
+    title, text = _strip_html_text(html, max_chars=4000)
+    if len(text) < 200:
+        return {
+            "ok": False,
+            "error": "Il sito sembra generato via JavaScript: il contenuto non è leggibile senza eseguirlo in un browser",
+        }
+
+    about_url = _find_about_link(html, url)
+    if about_url and _is_safe_url(about_url):
+        try:
+            about_html = _fetch_raw_html(about_url)
+        except Exception:
+            about_html = None
+        if about_html:
+            _, about_text = _strip_html_text(about_html, max_chars=2500)
+            if about_text:
+                text = text + "\n\n[Pagina 'chi siamo'/'about']\n" + about_text
+
+    return {"ok": True, "title": title, "testo": text[:6000]}

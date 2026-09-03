@@ -6,8 +6,8 @@ italiane: propone un piano tarato sul budget indicato (non solo le testate
 più costose), stima il prezzo, suggerisce per ogni testata online una zona
 di pagina meno affollata da altri inserzionisti, indica un contatto reale
 per avviare la trattativa (link trovato sul sito stesso della testata, mai
-inventato), e genera consigli strategici (punti di forza, spazi lasciati
-liberi dai competitor) e idee creative — una sicura e alcune più audaci —
+inventato), e genera consigli su misura concreti e idee creative — una
+sicura e alcune più audaci —
 in tempo reale, personalizzate su prodotto/servizio specifico, zona
 geografica e target di clientela indicati nel wizard — e, quando azienda o
 competitor indicano un sito web, lette davvero (il backend scarica la
@@ -109,12 +109,12 @@ backend locale, con fallback mock per le idee).
 | Login/registrazione utenti | Fatto (Supabase Auth) |
 | Limite 1 ricerca gratuita + conteggio per utente | Fatto (Supabase) |
 | Abbonamento 4,99€/mese | Fatto — Stripe collegato in modalità live, pagamenti reali |
-| Lettura reale del sito azienda/competitor per l'AI | Fatto (`/api/fetch-site-summary`, con protezione SSRF) |
+| Lettura reale del sito azienda/competitor per l'AI | Fatto (`/api/fetch-site-summary`: protezione SSRF, rileva siti generati via JavaScript invece di leggerli come vuoti, segue un eventuale link "chi siamo") |
 | Campi prodotto/zona/target nel wizard | Fatto, usati nel prompt AI |
 | Boost testate locali in base alla zona indicata | Fatto (mappa regioni → testate in `site/taglio-demo.html`) |
 | Copertura settimanali nello scraper | Ampliata: +TV Sorrisi e Canzoni, Vero, Diva e Donna, Confidenze, Autosprint |
 | Contatto pubblicitario per testata (link, non telefono/mail indovinati) | Fatto se lo scraper trova un link "Pubblicità" sul sito; altrimenti link diretto al sito reale della testata |
-| Punti di forza e spazi bianchi rispetto ai competitor | Reale (via API Claude, stesse ipotesi di lavoro delle idee creative), con fallback mock per settore |
+| Consigli su misura + analisi azienda | Reale (via API Claude), basati sul contenuto letto dal sito quando disponibile — fallback mock per settore altrimenti |
 
 ## Prossimi passi naturali, in ordine di impatto
 
@@ -169,12 +169,13 @@ backend locale, con fallback mock per le idee).
    scraper non trova nulla (o per i dati mock), il sito mostra comunque un
    link diretto al sito reale della testata ("Vai al sito e cerca
    'Pubblicità'"), mai un contatto fittizio. In parallelo, il prompt AI che
-   genera le idee creative ora produce anche `punti_di_forza` e
-   `spazi_bianchi` — 2-3 ipotesi di lavoro ciascuno su cosa valorizzare
-   dell'azienda e quali angoli/canali i competitor indicati sembrano
-   presidiare meno, esplicitamente presentate come ipotesi da validare, non
-   dati misurati (a differenza dei segnali sopra, questi vengono dal
-   ragionamento del modello, non dallo scraping).
+   genera le idee creative produce anche `analisi_azienda` e
+   `consigli_su_misura` — 4-5 consigli operativi, non punti di forza
+   astratti, ognuno agganciato a un dato specifico (prodotto, zona, target,
+   o contenuto realmente letto dal sito azienda/competitor). Prima erano
+   "punti di forza" e "spazi bianchi" generici, sostituiti dopo che i primi
+   test hanno mostrato consigli troppo slegati dal cliente reale — vedi
+   "Ricerche cucite sul cliente" più sotto per il dettaglio.
 7. **Sito pubblico senza account Claude**: l'artifact su claude.ai richiede
    un account per essere aperto. Per un link davvero pubblico, `docs/`
    contiene una copia del sito pensata per **GitHub Pages**:

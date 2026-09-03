@@ -182,12 +182,16 @@
   .step h2{font-size:30px;margin-bottom:10px;}
   .step-intro{color:var(--ink-soft);font-size:15px;max-width:56ch;margin-bottom:34px;line-height:1.55;}
   .alloc-caption{color:var(--ink-soft);font-size:12.5px;max-width:62ch;margin:-10px 0 18px;line-height:1.55;}
-  .strategy-cols{display:grid;grid-template-columns:1fr 1fr;gap:28px;}
-  .strategy-cols h4{font-size:13px;margin-bottom:10px;color:var(--ink);text-transform:uppercase;letter-spacing:0.03em;}
-  .strategy-cols ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;}
-  .strategy-cols li{font-size:13.5px;color:var(--ink-soft);line-height:1.5;padding-left:16px;position:relative;}
-  .strategy-cols li::before{content:"—";position:absolute;left:0;color:var(--ink-faint);}
-  @media (max-width:640px){ .strategy-cols{grid-template-columns:1fr;} }
+  .consigli-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:14px;}
+  .consigli-list li{
+    font-size:14px;
+    color:var(--ink);
+    line-height:1.55;
+    padding:14px 16px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-left:3px solid var(--cyan);
+  }
 
   .field{margin-bottom:24px;}
   .field label{display:block;font-size:13.5px;font-weight:600;margin-bottom:8px;color:var(--ink);}
@@ -649,18 +653,10 @@
         <p class="step-intro" id="resultsIntro"></p>
 
         <div class="result-block" id="strategyBlock" style="display:none;">
-          <h3>Punti di forza e spazi bianchi</h3>
-          <p class="alloc-caption">Ipotesi di lavoro generate a partire dai dati inseriti (nome, sito, settore, tono, competitor) — da validare, non fatti verificati.</p>
-          <div class="strategy-cols">
-            <div>
-              <h4>Punti di forza su cui puntare</h4>
-              <ul id="puntiDiForzaList"></ul>
-            </div>
-            <div>
-              <h4>Spazi lasciati liberi dai competitor</h4>
-              <ul id="spaziBianchiList"></ul>
-            </div>
-          </div>
+          <h3>Consigli su misura</h3>
+          <p class="alloc-caption" id="strategyCaption"></p>
+          <p class="step-intro" id="analisiAziendaText" style="margin-bottom:18px;"></p>
+          <ul id="consigliList" class="consigli-list"></ul>
         </div>
 
         <div class="result-block">
@@ -934,13 +930,11 @@
         {nome:'Il Giornale', formato:'Banner, sezione Motori online', quota:8},
         {nome:'Corriere Adriatico', formato:'Native, edizione locale', quota:8}
       ],
-      puntiDiForza:[
-        'Un rapporto diretto e artigianale col cliente, che i grandi marchi automotive non possono replicare — vale la pena renderlo esplicito in comunicazione.',
-        'Radicamento territoriale: la stampa locale rende credibile un messaggio di prossimità che su un grande quotidiano nazionale suonerebbe generico.'
-      ],
-      spaziBianchi:[
-        'I grandi competitor presidiano quasi sempre le testate nazionali generaliste: la stampa locale e i verticali di settore online restano spesso scoperti.',
-        'Poca comunicazione punta sul post-vendita/assistenza: un angolo di servizio, non solo di prodotto, è spesso lasciato libero.'
+      consigliSuMisura:[
+        'Punta sul rapporto diretto e artigianale col cliente, che i grandi marchi automotive non possono replicare — rendilo esplicito nel messaggio, non solo nel servizio.',
+        'Sfrutta il radicamento territoriale: sulla stampa locale un messaggio di prossimità è credibile, su un grande quotidiano nazionale suonerebbe generico.',
+        'I grandi competitor presidiano quasi sempre le testate nazionali generaliste: i verticali di settore online restano spesso scoperti, con costi molto più bassi.',
+        'Considera un angolo di comunicazione sul post-vendita/assistenza invece che solo sul prodotto — è uno spazio che pochi occupano.'
       ],
       sicura:{titolo:'Confronto prestazioni in doppia pagina', meccanismo:'Comparazione diretta con dati tecnici', perche:'Il settore automotive premia contenuti informativi verificabili, coerente col tono istituzionale.'},
       audaci:[
@@ -959,13 +953,11 @@
         {nome:'Donna Moderna', formato:'Native', quota:11},
         {nome:'Amica', formato:'Banner', quota:9}
       ],
-      puntiDiForza:[
-        'Un catalogo o una collezione ben definita è un contenuto editoriale forte di per sé, non solo un annuncio da vendere.',
-        'Un tono meno patinato e più autentico può distinguersi in un settore dove il linguaggio pubblicitario è spesso molto simile tra i brand.'
-      ],
-      spaziBianchi:[
+      consigliSuMisura:[
+        'Usa il catalogo o una collezione ben definita come contenuto editoriale forte di per sé, non solo come annuncio da vendere.',
+        'Un tono meno patinato e più autentico può distinguersi in un settore dove il linguaggio pubblicitario è spesso molto simile tra i brand.',
         'I grandi nomi del lusso concentrano il budget su poche testate premium: i femminili di fascia media e i digitali restano spesso meno affollati.',
-        'Poca comunicazione racconta il dietro le quinte (materiali, produzione, persone): è un angolo ancora poco battuto nella pubblicità di settore.'
+        'Racconta il dietro le quinte (materiali, produzione, persone): è un angolo ancora poco battuto nella pubblicità di settore.'
       ],
       sicura:{titolo:'Editoriale fotografico a doppia pagina', meccanismo:'Codice visivo alto, pochissimo testo', perche:'Coerente coi codici del lusso: l\'immagine parla, il logo resta in chiusura.'},
       audaci:[
@@ -984,13 +976,11 @@
         {nome:'Il Resto del Carlino', formato:'Mezza pagina, edizione locale', quota:11},
         {nome:'Quotidiano di Puglia', formato:'Banner, edizione locale', quota:11}
       ],
-      puntiDiForza:[
-        'La provenienza e la ricetta/lavorazione sono contenuti editoriali naturali nel food, non forzature pubblicitarie — un vantaggio da sfruttare.',
-        'Un legame con un territorio specifico è un aggancio credibile che i grandi marchi industriali faticano a replicare.'
-      ],
-      spaziBianchi:[
-        'La comunicazione food si concentra spesso su ricette/lifestyle: il racconto della filiera o del lavoro dietro il prodotto è meno presidiato.',
-        'La stampa locale nelle zone di produzione/vendita è spesso trascurata a favore delle testate food nazionali più costose.'
+      consigliSuMisura:[
+        'Sfrutta la provenienza e la ricetta/lavorazione come contenuto editoriale naturale nel food, non come forzatura pubblicitaria.',
+        'Punta su un legame con un territorio specifico: è un aggancio credibile che i grandi marchi industriali faticano a replicare.',
+        'Racconta la filiera o il lavoro dietro il prodotto invece della sola ricetta/lifestyle — è un angolo meno presidiato dai competitor.',
+        'Valuta la stampa locale nelle zone di produzione/vendita: spesso trascurata a favore delle testate food nazionali più costose, ma più mirata.'
       ],
       sicura:{titolo:'Ricetta firmata con il prodotto protagonista', meccanismo:'Utilità pratica come veicolo del brand', perche:'Il lettore riceve valore reale, il brand entra senza forzature.'},
       audaci:[
@@ -1009,12 +999,10 @@
         {nome:'Hardware Upgrade', formato:'Native', quota:12},
         {nome:'Punto Informatico', formato:'Banner', quota:11}
       ],
-      puntiDiForza:[
-        'Un prodotto/servizio tecnico specifico è un contenuto forte per un pubblico che valuta competenza più dell\'estetica — meglio mostrare dati che slogan.',
-        'Essere più piccoli di un grande player tech è spendibile come agilità e supporto diretto, non solo come limite.'
-      ],
-      spaziBianchi:[
-        'I grandi brand tech comunicano soprattutto su prodotto/prezzo: poca comunicazione parla di assistenza, formazione o supporto post-vendita.',
+      consigliSuMisura:[
+        'Mostra dati e specifiche del prodotto/servizio invece di slogan: il pubblico tech valuta competenza più dell\'estetica.',
+        'Gioca la carta dell\'agilità e del supporto diretto rispetto a un grande player tech, non solo come "sei più piccolo".',
+        'I grandi brand tech comunicano soprattutto su prodotto/prezzo: uno spazio scoperto è assistenza, formazione o supporto post-vendita.',
         'Le testate verticali tech (blog specializzati) restano spesso meno presidiate dai grandi player rispetto alla stampa generalista.'
       ],
       sicura:{titolo:'Caso studio con dati di adozione reali', meccanismo:'Prova sociale quantificata', perche:'Il pubblico tech valuta credibilità e numeri più dell\'estetica.'},
@@ -1033,13 +1021,11 @@
         {nome:'La Repubblica Affari&Finanza', formato:'Banner + native', quota:12},
         {nome:'Il Quotidiano del Sud', formato:'Native, sezione Economia locale', quota:12}
       ],
-      puntiDiForza:[
-        'Nel settore finanziario la fiducia si costruisce con chiarezza e sobrietà: un messaggio diretto vale più di un\'estetica elaborata.',
-        'Un focus di nicchia (es. un target o un bisogno specifico) è più credibile su testate locali/settoriali che su una pagina finanza generalista.'
-      ],
-      spaziBianchi:[
+      consigliSuMisura:[
+        'Costruisci il messaggio su chiarezza e sobrietà: nel settore finanziario la fiducia si guadagna così, più che con un\'estetica elaborata.',
+        'Se hai un focus di nicchia (un target o un bisogno specifico), è più credibile su testate locali/settoriali che su una pagina finanza generalista.',
         'La comunicazione finanziaria si concentra quasi sempre su Il Sole 24 Ore e poche testate economiche: la stampa economica locale resta spesso libera.',
-        'Poca comunicazione parla di educazione finanziaria/spiegazione: un angolo utile invece che solo promozionale è meno battuto.'
+        'Considera un angolo di educazione finanziaria/spiegazione invece che solo promozionale — è meno battuto e costruisce fiducia.'
       ],
       sicura:{titolo:'Grafico esplicativo con dato macro rilevante', meccanismo:'Autorevolezza tramite dato', perche:'Il settore finanziario premia sobrietà e precisione numerica.'},
       audaci:[
@@ -1058,13 +1044,11 @@
         {nome:'Quotidiano di Puglia', formato:'Banner geolocalizzato', quota:14},
         {nome:'La Nuova Sardegna', formato:'Mezza pagina, edizione locale', quota:14}
       ],
-      puntiDiForza:[
-        'La presenza fisica e la conoscenza diretta del cliente locale sono un vantaggio che le grandi catene non hanno — vale la pena renderlo il centro del messaggio.',
-        'La stampa locale, dove il pubblico è già quello del punto vendita, rende il messaggio più mirato di una campagna generalista su un grande quotidiano.'
-      ],
-      spaziBianchi:[
+      consigliSuMisura:[
+        'Fai della presenza fisica e della conoscenza diretta del cliente locale il centro del messaggio — è un vantaggio che le grandi catene non hanno.',
+        'Preferisci la stampa locale, dove il pubblico è già quello del punto vendita, a una campagna generalista su un grande quotidiano.',
         'La grande distribuzione comunica soprattutto su prezzo/offerta: un angolo di consulenza o servizio personale resta spesso scoperto.',
-        'Poca comunicazione retail locale usa il digitale geolocalizzato delle testate locali online, spesso più economico della pagina di carta.'
+        'Valuta il digitale geolocalizzato delle testate locali online: spesso più economico della pagina di carta e altrettanto mirato.'
       ],
       sicura:{titolo:'Pagina promozionale con offerta a tempo', meccanismo:'Urgenza classica', perche:'Formato collaudato che il pubblico retail riconosce e comprende subito.'},
       audaci:[
@@ -1083,13 +1067,11 @@
         {nome:'Il Fatto Quotidiano', formato:'Banner + native', quota:13},
         {nome:'Corriere Adriatico', formato:'Banner geolocalizzato', quota:13}
       ],
-      puntiDiForza:[
-        'Senza altri dati, il punto di forza più solido resta la specificità: cosa fai tu che un concorrente generico non fa altrettanto bene.',
-        'Una presenza locale o di nicchia è spesso più credibile su testate mirate che su una grande testata generalista.'
-      ],
-      spaziBianchi:[
+      consigliSuMisura:[
+        'Senza altri dati, punta sulla specificità: cosa fai tu che un concorrente generico non fa altrettanto bene.',
+        'Se hai una presenza locale o di nicchia, è spesso più credibile su testate mirate che su una grande testata generalista.',
         'Le grandi aziende del settore tendono a concentrarsi sulle stesse poche testate nazionali: quelle locali e i settimanali restano spesso meno presidiati.',
-        'Indica un competitor specifico nel passaggio precedente per un\'analisi più mirata su dove non è ancora presente.'
+        'Indica un competitor specifico (nome o sito) e un prodotto/zona nel wizard per un\'analisi molto più mirata su dove non sono ancora presenti.'
       ],
       sicura:{titolo:'Annuncio istituzionale con messaggio chiaro', meccanismo:'Chiarezza sopra tutto', perche:'Senza dati di settore specifici, la scelta più sicura è un messaggio diretto e ben leggibile.'},
       audaci:[
@@ -1602,8 +1584,8 @@
       console.error('Generazione AI non riuscita, uso fallback mock:', err);
       return {
         idea_sicura: mockData.sicura, idee_audaci: mockData.audaci,
-        punti_di_forza: mockData.puntiDiForza, spazi_bianchi: mockData.spaziBianchi,
-        isFallback:true
+        analisi_azienda: '', consigli_su_misura: mockData.consigliSuMisura,
+        sitoLettoDavvero: false, isFallback:true
       };
     });
 
@@ -1616,13 +1598,14 @@
 
   async function generateIdeasWithAI(payload){
     const sitoAziendaBlock = payload.sitoAzienda
-      ? `\nContenuto reale letto dal sito dell'azienda (titolo: "${payload.sitoAzienda.title}"):\n"""${payload.sitoAzienda.testo.slice(0, 1500)}"""\n`
+      ? `\nContenuto reale letto dal sito dell'azienda (titolo: "${payload.sitoAzienda.title}"):\n"""${payload.sitoAzienda.testo.slice(0, 3000)}"""\n`
       : '';
     const sitiCompetitorBlock = (payload.sitiCompetitor && payload.sitiCompetitor.length)
-      ? '\n' + payload.sitiCompetitor.map((s, i) => `Contenuto reale letto dal sito del competitor ${i+1} (titolo: "${s.title}"):\n"""${s.testo.slice(0, 1000)}"""`).join('\n\n') + '\n'
+      ? '\n' + payload.sitiCompetitor.map((s, i) => `Contenuto reale letto dal sito del competitor ${i+1} (titolo: "${s.title}"):\n"""${s.testo.slice(0, 1800)}"""`).join('\n\n') + '\n'
       : '';
+    const haSitoReale = !!(payload.sitoAzienda || (payload.sitiCompetitor && payload.sitiCompetitor.length));
 
-    const prompt = `Sei un consulente di marketing e direttore creativo che aiuta una PMI a fare pubblicità su giornali e riviste italiane (carta e digitale editoriale), con un occhio di riguardo per aziende con budget limitato — non dare per scontato che possano permettersi i grandi quotidiani nazionali.
+    const prompt = `Sei un consulente di marketing che aiuta una PMI a fare pubblicità su giornali e riviste italiane (carta e digitale editoriale), con un occhio di riguardo per aziende con budget limitato — non dare per scontato che possano permettersi i grandi quotidiani nazionali.
 
 Dati azienda:
 Nome: ${payload.name}
@@ -1636,18 +1619,20 @@ Competitor noti: ${payload.competitors.length ? payload.competitors.join(', ') :
 Budget indicativo: € ${payload.budget}
 Obiettivo campagna: ${payload.obiettivo}
 ${sitoAziendaBlock}${sitiCompetitorBlock}
-Usa il prodotto/servizio specifico, la zona geografica e il target di clientela per rendere punti di forza, spazi bianchi e idee molto più mirati e concreti — evita genericità da "settore X in generale" quando hai dati più specifici. Se hai il contenuto reale del sito azienda e/o dei competitor, basa il ragionamento su quello (cosa dicono davvero di sé, che tono usano, cosa promettono) invece che su ipotesi generiche — ma resta esplicito quando un punto è dedotto/ipotizzato e quando viene invece da un dato letto per davvero.
+${haSitoReale
+  ? 'Hai contenuto REALE letto da almeno un sito (azienda e/o competitor) qui sopra: usalo come base primaria del ragionamento. Prima leggilo per capire davvero cosa fa l\'azienda (servizi/prodotti specifici, punti che enfatizza, tono, eventuali prezzi o garanzie citati) e, se presente, cosa enfatizzano i competitor. Ogni consiglio deve poter essere ricondotto a qualcosa di concreto letto nel testo, non a supposizioni generiche sul settore — se citi un dettaglio, che sia uno vero preso dal testo fornito.'
+  : 'Non hai contenuto reale di nessun sito (non indicato, non raggiungibile, o generato via JavaScript e quindi illeggibile): dillo esplicitamente nell\'analisi invece di far finta di sapere cose che non sai, e costruisci i consigli sul prodotto/servizio, zona e target indicati più i pattern tipici del settore — restando espliciti che sono ipotesi, non fatti verificati su questa azienda specifica.'}
 
 Genera:
-- "punti_di_forza": 2-3 punti di forza plausibili di questa azienda su cui costruire la comunicazione, il più possibile specifici al prodotto/servizio e alla zona indicati (se il sito web non basta a saperne di più, ragiona sul posizionamento tipico di un'azienda con queste caratteristiche in questo settore — dillo in modo che non suoni come un fatto verificato ma come un'ipotesi di lavoro)
-- "spazi_bianchi": 2-3 angoli, canali, formati o segmenti di pubblico che i competitor indicati (o le aziende tipiche del settore, se non ne hai indicati) sembrano presidiare poco — occasioni di differenziazione legate al prodotto/target/zona specifici quando possibile, non fatti verificati: sii esplicito che sono ipotesi da validare, non dati misurati
+- "analisi_azienda": 2-3 frasi su cosa fa davvero questa azienda secondo quello che hai letto (o, se non hai contenuto reale, una frase che lo dichiara apertamente e riassume solo l'ipotesi di lavoro basata su settore/prodotto/zona)
+- "consigli_su_misura": 4-5 consigli CONCRETI e specifici per la campagna pubblicitaria — non punti di forza astratti, ma indicazioni operative tipo "punta su X perché Y" — ciascuno deve collegarsi esplicitamente a un dato specifico (prodotto, zona, target, o qualcosa di realmente letto sul sito azienda/competitor), non genericità valide per qualsiasi azienda del settore
 - una "idea_sicura": basata su pattern collaudati del settore, basso rischio
 - due "idee_audaci": meccanismi creativi presi in prestito da ALTRI settori, applicati in modo pertinente a questo brand, per stupire il mercato senza risultare fuori contesto
 
 Tutte le idee devono essere realizzabili su carta stampata o adv editoriale digitale (niente tecnologie non disponibili su questi formati).
 
 Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo formato esatto:
-{"punti_di_forza":["...","..."],"spazi_bianchi":["...","..."],"idea_sicura":{"titolo":"...","meccanismo":"...","perche":"..."},"idee_audaci":[{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0},{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}]}
+{"analisi_azienda":"...","consigli_su_misura":["...","...","...","..."],"idea_sicura":{"titolo":"...","meccanismo":"...","perche":"..."},"idee_audaci":[{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0},{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}]}
 
 "novita" è un numero da 0 a 100 che stimi tu, quanto l'idea si discosta dai pattern standard del settore. Scrivi tutti i testi in italiano.`;
 
@@ -1656,7 +1641,7 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1500,
+        max_tokens: 1800,
         messages: [{ role: "user", content: prompt }]
       })
     });
@@ -1666,10 +1651,10 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
     if(!parsed.idea_sicura || !Array.isArray(parsed.idee_audaci)) throw new Error('Formato risposta inatteso');
-    // punti_di_forza/spazi_bianchi sono un arricchimento: se il modello non li
-    // produce (risposta più vecchia o parziale) non buttiamo via il resto.
-    if(!Array.isArray(parsed.punti_di_forza)) parsed.punti_di_forza = [];
-    if(!Array.isArray(parsed.spazi_bianchi)) parsed.spazi_bianchi = [];
+    // analisi_azienda/consigli_su_misura sono un arricchimento: se il modello
+    // non li produce (risposta più vecchia o parziale) non buttiamo via il resto.
+    if(!Array.isArray(parsed.consigli_su_misura)) parsed.consigli_su_misura = [];
+    parsed.sitoLettoDavvero = haSitoReale;
     return parsed;
   }
 
@@ -1682,13 +1667,17 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
       ? `Basato sull'analisi di ${state.competitors.length} competitor e sui pattern del settore ${sectorLabel}, con budget di € ${state.budget.toLocaleString('it-IT')}.`
       : `Nessun competitor indicato: piano basato sui benchmark del settore ${sectorLabel}, con budget di € ${state.budget.toLocaleString('it-IT')}.`;
 
-    const puntiDiForza = ideas.punti_di_forza || [];
-    const spaziBianchi = ideas.spazi_bianchi || [];
+    const consigli = ideas.consigli_su_misura || [];
     const strategyBlock = document.getElementById('strategyBlock');
-    if(puntiDiForza.length || spaziBianchi.length){
+    if(consigli.length){
       strategyBlock.style.display = '';
-      document.getElementById('puntiDiForzaList').innerHTML = puntiDiForza.map(p => `<li>${p}</li>`).join('') || '<li>Nessun punto di forza generato per questa analisi.</li>';
-      document.getElementById('spaziBianchiList').innerHTML = spaziBianchi.map(p => `<li>${p}</li>`).join('') || '<li>Nessuno spazio bianco individuato per questa analisi.</li>';
+      document.getElementById('strategyCaption').textContent = ideas.sitoLettoDavvero
+        ? 'Basati sul contenuto reale letto dal sito indicato (azienda e/o competitor), non solo su ipotesi di settore.'
+        : 'Nessun sito analizzabile: ipotesi di lavoro dedotte da settore, prodotto, zona e target indicati — da validare, non fatti verificati.';
+      const analisiEl = document.getElementById('analisiAziendaText');
+      analisiEl.textContent = ideas.analisi_azienda || '';
+      analisiEl.style.display = ideas.analisi_azienda ? '' : 'none';
+      document.getElementById('consigliList').innerHTML = consigli.map(c => `<li>${c}</li>`).join('');
     } else {
       strategyBlock.style.display = 'none';
     }
