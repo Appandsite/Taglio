@@ -8,11 +8,17 @@ di pagina meno affollata da altri inserzionisti, indica un contatto reale
 per avviare la trattativa (link trovato sul sito stesso della testata, mai
 inventato), e genera consigli strategici (punti di forza, spazi lasciati
 liberi dai competitor) e idee creative — una sicura e alcune più audaci —
-in tempo reale. Il campo "competitor" nel wizard alimenta il generatore di
-idee/strategia (per calibrare tono e riferimenti), non l'allocazione del
-budget: lo scraper rileva reti pubblicitarie attive per testata, non le
-creatività dei singoli inserzionisti, quindi non può identificare dove
-specificamente un competitor con nome è posizionato — vedi limiti sotto.
+in tempo reale, personalizzate su prodotto/servizio specifico, zona
+geografica e target di clientela indicati nel wizard — e, quando azienda o
+competitor indicano un sito web, lette davvero (il backend scarica la
+pagina, l'AI ragiona sul contenuto reale, non solo sul nome/URL). La zona
+geografica indicata dà anche una spinta alle testate locali pertinenti nel
+piano di allocazione (es. "Bergamo" → L'Eco di Bergamo pesa di più). Il
+campo "competitor" alimenta il generatore di idee/strategia, non
+l'allocazione del budget: lo scraper rileva reti pubblicitarie attive per
+testata, non le creatività dei singoli inserzionisti, quindi non può
+identificare dove specificamente un competitor con nome è posizionato —
+vedi limiti sotto.
 
 Accesso: richiede login (email + password, via Supabase Auth). La prima
 ricerca è gratuita per utente, poi serve un abbonamento di 4,99€/mese
@@ -40,10 +46,11 @@ taglio-project/
 └── scraper/
     ├── scraper.py             → visita le testate e rileva gli ad slot attivi
     ├── taxonomy.py            → mappa settore azienda -> categorie di testate
-    ├── config.yaml            → elenco testate (62), ciascuna con categorie
+    ├── config.yaml            → elenco testate (67), ciascuna con categorie
     ├── aggregator.py          → riassume gli scan grezzi per testata
-    ├── api.py                 → backend FastAPI: dati al sito + checkout
-    │                            e webhook Stripe per l'abbonamento
+    ├── api.py                 → backend FastAPI: dati al sito, checkout e
+    │                            webhook Stripe, lettura reale di siti
+    │                            azienda/competitor per l'AI
     ├── requirements.txt       → dipendenze scraper + API (uso locale)
     ├── requirements-api.txt   → solo dipendenze API, per il deploy online
     └── Procfile               → comando di avvio, alternativa a render.yaml
@@ -94,7 +101,7 @@ backend locale, con fallback mock per le idee).
 | Allocazione budget per testata | Reale — backend sempre online; fallback mock solo se Render è giù |
 | Stima prezzi | Modello indicativo da benchmark pubblici, non tariffe ufficiali |
 | Mockup grafico idee | Generato client-side (SVG), layout di riferimento non asset finale |
-| Backend online (non-localhost) | Fatto — https://taglio-api.onrender.com, dati reali da 62 testate |
+| Backend online (non-localhost) | Fatto — https://taglio-api.onrender.com, dati reali (67 testate tracciate) |
 | Gestione cookie banner nello scraper | Fatto |
 | Storico nel tempo (durata campagne) | Fatto |
 | Piano tarato sul budget (non sempre i grandi nazionali) | Fatto |
@@ -102,6 +109,10 @@ backend locale, con fallback mock per le idee).
 | Login/registrazione utenti | Fatto (Supabase Auth) |
 | Limite 1 ricerca gratuita + conteggio per utente | Fatto (Supabase) |
 | Abbonamento 4,99€/mese | Fatto — Stripe collegato in modalità live, pagamenti reali |
+| Lettura reale del sito azienda/competitor per l'AI | Fatto (`/api/fetch-site-summary`, con protezione SSRF) |
+| Campi prodotto/zona/target nel wizard | Fatto, usati nel prompt AI |
+| Boost testate locali in base alla zona indicata | Fatto (mappa regioni → testate in `site/taglio-demo.html`) |
+| Copertura settimanali nello scraper | Ampliata: +TV Sorrisi e Canzoni, Vero, Diva e Donna, Confidenze, Autosprint |
 | Contatto pubblicitario per testata (link, non telefono/mail indovinati) | Fatto se lo scraper trova un link "Pubblicità" sul sito; altrimenti link diretto al sito reale della testata |
 | Punti di forza e spazi bianchi rispetto ai competitor | Reale (via API Claude, stesse ipotesi di lavoro delle idee creative), con fallback mock per settore |
 

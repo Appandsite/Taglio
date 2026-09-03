@@ -145,6 +145,9 @@ testate:
   - name: "Famiglia Cristiana"
     url: "https://www.famigliacristiana.it"
     categorie: [generalista]
+  - name: "TV Sorrisi e Canzoni"
+    url: "https://www.sorrisi.com"
+    categorie: [generalista, lifestyle]
 
   # --- Rotocalchi e settimanali di gossip ---
   - name: "Gente"
@@ -161,6 +164,12 @@ testate:
     categorie: [gossip, lifestyle]
   - name: "DiPiù"
     url: "https://www.dipiu.it"
+    categorie: [gossip, lifestyle]
+  - name: "Vero"
+    url: "https://verosettimanale.com"
+    categorie: [gossip, lifestyle]
+  - name: "Diva e Donna"
+    url: "https://www.divaedonna.it"
     categorie: [gossip, lifestyle]
 
   # --- Femminili e lifestyle ---
@@ -185,6 +194,9 @@ testate:
   - name: "Elle Italia"
     url: "https://www.elle.com/it"
     categorie: [moda, lifestyle]
+  - name: "Confidenze"
+    url: "https://www.confidenze.com"
+    categorie: [lifestyle]
 
   # --- Tecnologia ---
   - name: "Wired Italia"
@@ -210,6 +222,9 @@ testate:
   - name: "Quattroruote"
     url: "https://www.quattroruote.it"
     categorie: [automotive]
+  - name: "Autosprint"
+    url: "https://www.autosprint.it"
+    categorie: [automotive, sport]
   - name: "Gambero Rosso"
     url: "https://www.gamberorosso.it"
     categorie: [food]

@@ -7,7 +7,9 @@ può leggerli con una semplice fetch() invece di dati finti. Gestisce anche
 l'abbonamento a pagamento (Stripe) e lo stato "abbonato" degli utenti
 (Supabase): dopo le ricerche gratuite, il sito chiama /api/create-checkout-
 session per far pagare l'utente, e Stripe notifica il pagamento riuscito a
-/api/stripe-webhook, che aggiorna il profilo su Supabase.
+/api/stripe-webhook, che aggiorna il profilo su Supabase. /api/fetch-site-
+summary legge davvero il sito dell'azienda o di un competitor indicato nel
+wizard, per dare all'AI un contesto reale invece di solo nome/URL.
 
 Uso:
     uvicorn api:app --reload --port 8000
@@ -28,10 +30,14 @@ errore chiaro invece di rompersi — l'app resta usabile, solo l'abbonamento
 non è ancora attivabile.
 """
 
+import ipaddress
 import json
 import os
+import re
+import socket
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import requests
 import stripe
@@ -179,3 +185,71 @@ async def stripe_webhook(request: Request):
         )
 
     return {"received": True}
+
+
+def _is_safe_url(url: str) -> bool:
+    """L'endpoint qui sotto scarica un URL scelto da chi usa il sito
+    (l'azienda o un suo competitor): senza controlli sarebbe un classico
+    varco SSRF verso la rete interna del server (IP privati, localhost,
+    indirizzi cloud riservati). Accetta solo http/https con un hostname che
+    risolve a un indirizzo pubblico."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        for info in socket.getaddrinfo(parsed.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _strip_html_text(html: str, max_chars: int = 3000) -> tuple[str, str]:
+    """Estrae titolo e testo leggibile da una pagina HTML senza dipendenze
+    pesanti (niente parser HTML completo): basta a dare all'AI un'idea
+    reale di cosa fa il sito, non serve un'estrazione perfetta."""
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    title = re.sub(r"\s+", " ", title_match.group(1)).strip() if title_match else ""
+
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"&nbsp;", " ", text)
+    text = re.sub(r"&[a-zA-Z0-9#]+;", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return title, text[:max_chars]
+
+
+@app.get("/api/fetch-site-summary")
+def fetch_site_summary(url: str):
+    """Legge davvero il sito indicato (dell'azienda o di un competitor) per
+    dare all'AI un contesto reale invece di ragionare sul solo nome/URL.
+    Fallisce in modo pulito (200 con 'ok': false) se il sito non è
+    raggiungibile, reindirizza altrove o blocca lo scraping — il frontend
+    prosegue senza quel contesto invece di bloccarsi."""
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL non valido o non consentito"}
+    try:
+        resp = requests.get(
+            url,
+            timeout=8,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; TaglioBot/0.1)"},
+            allow_redirects=False,
+            stream=True,
+        )
+        if resp.status_code in (301, 302, 303, 307, 308):
+            # Non seguiamo il redirect: la destinazione andrebbe rivalidata
+            # con lo stesso controllo SSRF, più semplice non seguirlo affatto.
+            return {"ok": False, "error": "Il sito reindirizza altrove, non l'ho seguito per sicurezza"}
+        if resp.status_code != 200:
+            return {"ok": False, "error": f"Il sito ha risposto con errore {resp.status_code}"}
+        raw = resp.raw.read(300_000, decode_content=True)
+        html = raw.decode(resp.encoding or "utf-8", errors="ignore")
+    except Exception:
+        return {"ok": False, "error": "Sito non raggiungibile"}
+
+    title, text = _strip_html_text(html)
+    if not text:
+        return {"ok": False, "error": "Nessun contenuto leggibile trovato sul sito"}
+    return {"ok": True, "title": title, "testo": text}

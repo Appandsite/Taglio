@@ -548,6 +548,23 @@
         </div>
       </div>
 
+      <div class="field">
+        <label for="prodotto">Prodotto o servizio specifico</label>
+        <input type="text" id="prodotto" placeholder="Es. Riparazione cambi automatici, non 'automotive' in generale">
+        <p class="hint">Più è specifico, più le raccomandazioni saranno mirate invece che generiche per il settore.</p>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="zonaGeografica">Zona geografica</label>
+          <input type="text" id="zonaGeografica" placeholder="Es. Bergamo, Puglia, o 'Nazionale'">
+        </div>
+        <div class="field">
+          <label for="targetCliente">Target di clientela</label>
+          <input type="text" id="targetCliente" placeholder="Es. famiglie, professionisti B2B">
+        </div>
+      </div>
+
       <div class="btn-row">
         <button class="btn btn-primary" onclick="goTo(2)">Continua</button>
       </div>
@@ -1106,6 +1123,65 @@
     }
   }
 
+  // ---------- Lettura reale del sito azienda/competitor ----------
+  function pareUnUrl(testo){
+    return /^https?:\/\//i.test(testo) || /\.[a-z]{2,}(\/|$|\?)/i.test(testo.trim());
+  }
+  function normalizzaUrl(testo){
+    const t = testo.trim();
+    return /^https?:\/\//i.test(t) ? t : 'https://' + t;
+  }
+
+  // Va all'endpoint del backend (mai fetch diretta dal browser: la maggior
+  // parte dei siti non manda gli header CORS che servirebbero) che legge
+  // davvero la pagina, invece di far ragionare l'AI sul solo nome/URL.
+  // Fallisce in silenzio (torna null) — un sito non raggiungibile non deve
+  // bloccare il resto dell'analisi.
+  async function fetchSiteSummary(url){
+    if(!url) return null;
+    try{
+      const res = await fetch(API_BASE_URL + '/api/fetch-site-summary?url=' + encodeURIComponent(url));
+      if(!res.ok) return null;
+      const data = await res.json();
+      return data.ok ? data : null;
+    } catch(err){
+      console.warn('Lettura sito non riuscita:', url, err);
+      return null;
+    }
+  }
+
+  // ---------- Corrispondenza zona geografica → testate locali ----------
+  // Se il cliente indica una zona, le testate locali di quella zona
+  // ricevono una spinta nel piano: altrimenti una piccola attività locale
+  // vedrebbe comunque proposte prima le grandi testate nazionali solo
+  // perché più "rilevanti" in generale, anche quando quella del suo
+  // territorio sarebbe la scelta più sensata.
+  const REGION_TESTATA = [
+    [['bergamo'], ['eco di bergamo']],
+    [['trieste', 'friuli', 'venezia giulia', 'fvg'], ['il piccolo']],
+    [['sardegna', 'cagliari', 'sassari'], ['nuova sardegna', 'unione sarda']],
+    [['sicilia', 'palermo', 'catania'], ['giornale di sicilia', 'quotidiano di sicilia']],
+    [['calabria', 'reggio calabria'], ['gazzetta del sud']],
+    [['puglia', 'bari', 'foggia', 'lecce', 'taranto'], ['gazzetta del mezzogiorno', 'quotidiano di puglia']],
+    [['basilicata', 'potenza', 'matera'], ['quotidiano del sud']],
+    [['toscana', 'firenze'], ['la nazione']],
+    [['livorno'], ['il tirreno']],
+    [['emilia', 'bologna', 'romagna'], ['resto del carlino']],
+    [['campania', 'napoli'], ['il mattino']],
+    [['marche', 'ancona'], ['corriere adriatico']],
+    [['liguria', 'genova'], ['secolo xix']],
+    [['lazio', 'roma'], ['il tempo', 'il messaggero']],
+  ];
+
+  function testateRilevantiPerZona(zona){
+    if(!zona) return [];
+    const z = zona.toLowerCase();
+    for(const [keywords, testate] of REGION_TESTATA){
+      if(keywords.some(k => z.includes(k))) return testate;
+    }
+    return [];
+  }
+
   // Homepage delle testate note (domini verificati, stessi di scraper/config.yaml).
   // Usata come fallback quando lo scraper non ha trovato un link diretto alla
   // sezione pubblicità: meglio mandare l'utente sul sito reale della testata a
@@ -1151,11 +1227,14 @@
     [['internazionale'], 'https://www.internazionale.it'],
     [['focus'], 'https://www.focus.it'],
     [['famiglia cristiana'], 'https://www.famigliacristiana.it'],
+    [['sorrisi'], 'https://www.sorrisi.com'],
     [['gente'], 'https://www.gente.it'],
     [['oggi'], 'https://www.oggi.it'],
     [['novella 2000'], 'https://www.novella2000.it'],
     [['dipiù'], 'https://www.dipiu.it'],
     [['chi'], 'https://www.chimagazine.it'],
+    [['vero'], 'https://verosettimanale.com'],
+    [['diva e donna'], 'https://www.divaedonna.it'],
     [['vogue'], 'https://www.vogue.it'],
     [['vanity fair'], 'https://www.vanityfair.it'],
     [['elle'], 'https://www.elle.com/it'],
@@ -1163,6 +1242,7 @@
     [['donna moderna'], 'https://www.donnamoderna.com'],
     [['io donna'], 'https://www.iodonna.it'],
     [['amica'], 'https://www.amica.it'],
+    [['confidenze'], 'https://www.confidenze.com'],
     [['gq italia'], 'https://www.gqitalia.it'],
     [['wired'], 'https://www.wired.it'],
     [['hdblog'], 'https://www.hdblog.it'],
@@ -1171,6 +1251,7 @@
     [['punto informatico'], 'https://www.punto-informatico.it'],
     [['hardware upgrade'], 'https://www.hwupgrade.it'],
     [['quattroruote'], 'https://www.quattroruote.it'],
+    [['autosprint'], 'https://www.autosprint.it'],
     [['gambero rosso'], 'https://www.gamberorosso.it'],
     [['cucina italiana'], 'https://www.lacucinaitaliana.it'],
     [['dissapore'], 'https://www.dissapore.com'],
@@ -1250,23 +1331,28 @@
     [['panorama', 'espresso'], 0.55],
     [['internazionale', 'focus'], 0.5],
     [['famiglia cristiana'], 0.45],
+    [['sorrisi'], 0.5],
     // --- Rotocalchi/gossip ---
     [['chi'], 0.5],
     [['gente', 'oggi'], 0.45],
     [['novella 2000'], 0.4],
     [['dipiù'], 0.35],
+    [['vero'], 0.4],
+    [['diva e donna'], 0.4],
     // --- Femminili e lifestyle ---
     [['vogue'], 1.3],
     [['vanity fair'], 0.7],
     [['elle'], 0.7],
     [['grazia', 'io donna', 'gq italia'], 0.6],
     [['donna moderna', 'amica'], 0.55],
+    [['confidenze'], 0.45],
     // --- Tech: quasi solo digitale, costi molto più bassi della carta ---
     [['wired'], 0.6],
     [['hdblog', 'dday', "tom's hardware", 'hardware upgrade'], 0.4],
     [['punto informatico'], 0.35],
     // --- Motori, food e verticali ---
     [['quattroruote', 'gambero rosso'], 0.6],
+    [['autosprint'], 0.55],
     [['cucina italiana'], 0.8],
     [['dissapore'], 0.4],
   ];
@@ -1309,8 +1395,10 @@
   // comunque Corriere della Sera, che da solo può costare più dell'intero
   // budget. Qui si bilancia rilevanza e sostenibilità economica, e si
   // preferisce un mix di testate diverse piuttosto che poche costose.
-  function buildAllocationPlan(candidates, budget, periodoKey){
+  function buildAllocationPlan(candidates, budget, periodoKey, zonaGeografica){
     if(!candidates.length) return [];
+
+    const testateLocali = testateRilevantiPerZona(zonaGeografica);
 
     const scored = candidates.map((t, i)=>{
       const est = estimateCost(t.nome, t.formato, periodoKey, t.formatoCategoria);
@@ -1318,8 +1406,14 @@
       // Rilevanza: la quota originale (presenza pubblicitaria reale, o il
       // peso assegnato nei dati mock) se c'è; altrimenti l'ordine in elenco,
       // dando comunque più peso alle prime voci.
-      const rilevanza = (typeof t.quota === 'number') ? t.quota : Math.max(100 - i * 8, 10);
-      return { ...t, est, costMid, rilevanza };
+      let rilevanza = (typeof t.quota === 'number') ? t.quota : Math.max(100 - i * 8, 10);
+      // Se il cliente ha indicato una zona e questa testata è quella del
+      // territorio, vale di più di quanto direbbe la sola presenza
+      // pubblicitaria generica — è il motivo per cui la boostiamo qui e non
+      // la lasciamo semplicemente competere alla pari.
+      const isLocale = testateLocali.some(k => t.nome.toLowerCase().includes(k));
+      if(isLocale) rilevanza *= 1.8;
+      return { ...t, est, costMid, rilevanza, zonaMatch: isLocale };
     });
 
     // Scarta le testate il cui costo minimo da solo supera l'intero budget:
@@ -1484,11 +1578,27 @@
     const mockData = SETTORE_DATA[sectorKey] || SETTORE_DATA.altro;
     const name = document.getElementById('companyName').value.trim() || 'la tua azienda';
     const website = document.getElementById('website').value.trim();
+    const prodotto = document.getElementById('prodotto').value.trim();
+    const zonaGeografica = document.getElementById('zonaGeografica').value.trim();
+    const targetCliente = document.getElementById('targetCliente').value.trim();
 
-    const ideasPromise = generateIdeasWithAI({
-      name, website, sectorLabel: mockData.label, tone: state.tone,
-      competitors: state.competitors, budget: state.budget, obiettivo: state.obiettivo
-    }).catch(err=>{
+    // Legge davvero il sito dell'azienda e quelli dei competitor che
+    // sembrano un URL (non solo un nome) — dà all'AI un contesto reale
+    // invece di farla ragionare sul solo nome/URL come stringa.
+    const competitorUrls = state.competitors.filter(pareUnUrl).map(normalizzaUrl);
+    const sitiPromise = Promise.all([
+      website ? fetchSiteSummary(normalizzaUrl(website)) : null,
+      ...competitorUrls.map(fetchSiteSummary)
+    ]);
+
+    const ideasPromise = sitiPromise.then(([sitoAzienda, ...sitiCompetitor]) =>
+      generateIdeasWithAI({
+        name, website, sectorLabel: mockData.label, tone: state.tone,
+        competitors: state.competitors, budget: state.budget, obiettivo: state.obiettivo,
+        prodotto, zonaGeografica, targetCliente,
+        sitoAzienda, sitiCompetitor: sitiCompetitor.filter(Boolean)
+      })
+    ).catch(err=>{
       console.error('Generazione AI non riuscita, uso fallback mock:', err);
       return {
         idea_sicura: mockData.sicura, idee_audaci: mockData.audaci,
@@ -1501,24 +1611,36 @@
 
     const [, ideas, alloc] = await Promise.all([animation, ideasPromise, allocPromise]);
     fill.style.width = '100%';
-    setTimeout(()=>showResults(mockData.label, name, ideas, alloc), 300);
+    setTimeout(()=>showResults(mockData.label, name, ideas, alloc, zonaGeografica), 300);
   }
 
   async function generateIdeasWithAI(payload){
+    const sitoAziendaBlock = payload.sitoAzienda
+      ? `\nContenuto reale letto dal sito dell'azienda (titolo: "${payload.sitoAzienda.title}"):\n"""${payload.sitoAzienda.testo.slice(0, 1500)}"""\n`
+      : '';
+    const sitiCompetitorBlock = (payload.sitiCompetitor && payload.sitiCompetitor.length)
+      ? '\n' + payload.sitiCompetitor.map((s, i) => `Contenuto reale letto dal sito del competitor ${i+1} (titolo: "${s.title}"):\n"""${s.testo.slice(0, 1000)}"""`).join('\n\n') + '\n'
+      : '';
+
     const prompt = `Sei un consulente di marketing e direttore creativo che aiuta una PMI a fare pubblicità su giornali e riviste italiane (carta e digitale editoriale), con un occhio di riguardo per aziende con budget limitato — non dare per scontato che possano permettersi i grandi quotidiani nazionali.
 
 Dati azienda:
 Nome: ${payload.name}
 Sito web: ${payload.website || 'non indicato'}
+Prodotto o servizio specifico: ${payload.prodotto || 'non indicato, ragiona sul settore in generale'}
+Zona geografica: ${payload.zonaGeografica || 'non indicata, presumi rilevanza nazionale'}
+Target di clientela: ${payload.targetCliente || 'non indicato'}
 Settore: ${payload.sectorLabel}
 Tono di marca: ${payload.tone || 'non specificato'}
 Competitor noti: ${payload.competitors.length ? payload.competitors.join(', ') : 'nessuno indicato, usa benchmark di settore'}
 Budget indicativo: € ${payload.budget}
 Obiettivo campagna: ${payload.obiettivo}
+${sitoAziendaBlock}${sitiCompetitorBlock}
+Usa il prodotto/servizio specifico, la zona geografica e il target di clientela per rendere punti di forza, spazi bianchi e idee molto più mirati e concreti — evita genericità da "settore X in generale" quando hai dati più specifici. Se hai il contenuto reale del sito azienda e/o dei competitor, basa il ragionamento su quello (cosa dicono davvero di sé, che tono usano, cosa promettono) invece che su ipotesi generiche — ma resta esplicito quando un punto è dedotto/ipotizzato e quando viene invece da un dato letto per davvero.
 
 Genera:
-- "punti_di_forza": 2-3 punti di forza plausibili di questa azienda su cui costruire la comunicazione, dedotti da nome/sito/settore/tono/budget (se il sito web non basta a saperne di più, ragiona sul posizionamento tipico di un'azienda con queste caratteristiche in questo settore — dillo in modo che non suoni come un fatto verificato ma come un'ipotesi di lavoro)
-- "spazi_bianchi": 2-3 angoli, canali, formati o segmenti di pubblico che i competitor indicati (o le aziende tipiche del settore, se non ne hai indicati) sembrano presidiare poco — occasioni di differenziazione, non fatti verificati: sii esplicito che sono ipotesi da validare, non dati misurati
+- "punti_di_forza": 2-3 punti di forza plausibili di questa azienda su cui costruire la comunicazione, il più possibile specifici al prodotto/servizio e alla zona indicati (se il sito web non basta a saperne di più, ragiona sul posizionamento tipico di un'azienda con queste caratteristiche in questo settore — dillo in modo che non suoni come un fatto verificato ma come un'ipotesi di lavoro)
+- "spazi_bianchi": 2-3 angoli, canali, formati o segmenti di pubblico che i competitor indicati (o le aziende tipiche del settore, se non ne hai indicati) sembrano presidiare poco — occasioni di differenziazione legate al prodotto/target/zona specifici quando possibile, non fatti verificati: sii esplicito che sono ipotesi da validare, non dati misurati
 - una "idea_sicura": basata su pattern collaudati del settore, basso rischio
 - due "idee_audaci": meccanismi creativi presi in prestito da ALTRI settori, applicati in modo pertinente a questo brand, per stupire il mercato senza risultare fuori contesto
 
@@ -1551,7 +1673,7 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
     return parsed;
   }
 
-  function showResults(sectorLabel, name, ideas, alloc){
+  function showResults(sectorLabel, name, ideas, alloc, zonaGeografica){
     document.getElementById('loadingView').style.display = 'none';
     document.getElementById('resultsView').style.display = 'block';
 
@@ -1576,7 +1698,7 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
     const periodoKey = document.getElementById('period').value;
     let totMinSum = 0, totMaxSum = 0;
 
-    const piano = buildAllocationPlan(alloc.testate, state.budget, periodoKey);
+    const piano = buildAllocationPlan(alloc.testate, state.budget, periodoKey, zonaGeografica);
 
     piano.forEach(t=>{
       const est = t.est;
@@ -1585,6 +1707,9 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
 
       const campagnaBadge = (t.campagna && t.campagna.giorni_consecutivi >= 2)
         ? `<div class="alloc-campaign">Campagna in corso da ${t.campagna.giorni_consecutivi} giorni</div>`
+        : '';
+      const zonaBadge = t.zonaMatch
+        ? `<div class="alloc-campaign" style="border-color:var(--cyan);color:var(--cyan-strong);">Testata del territorio indicato</div>`
         : '';
 
       const posizionamentoLine = t.posizionamento
@@ -1608,6 +1733,7 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
           <div class="alloc-name">${t.nome}</div>
           <div class="alloc-format">${t.formato}</div>
           ${campagnaBadge}
+          ${zonaBadge}
         </div>
         <div class="alloc-track"><div class="alloc-fill" style="width:${t.quota}%"></div></div>
         <div class="alloc-pct">${t.quota}%</div>
