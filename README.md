@@ -79,10 +79,10 @@ backend locale, con fallback mock per le idee).
 | Generazione idee creative | Reale (via API Claude), con fallback mock |
 | Scraping ad slot | Reale, testato dall'utente su 62 testate |
 | Filtro testate per settore | Reale, collegato scraper → aggregator → API |
-| Allocazione budget per testata | Reale se il backend è attivo e ha dati, altrimenti mock |
+| Allocazione budget per testata | Reale — backend sempre online; fallback mock solo se Render è giù |
 | Stima prezzi | Modello indicativo da benchmark pubblici, non tariffe ufficiali |
 | Mockup grafico idee | Generato client-side (SVG), layout di riferimento non asset finale |
-| Backend online (non-localhost) | Codice su GitHub, deploy Render in corso — vedi sotto |
+| Backend online (non-localhost) | Fatto — https://taglio-api.onrender.com, dati reali da 62 testate |
 | Gestione cookie banner nello scraper | Fatto |
 | Storico nel tempo (durata campagne) | Fatto |
 | Piano tarato sul budget (non sempre i grandi nazionali) | Fatto |
@@ -103,23 +103,21 @@ backend locale, con fallback mock per le idee).
    — campo `campagna_probabile` in `aggregated.json`, mostrato nel sito come
    badge "Campagna in corso da N giorni" quando lo streak è di almeno 2
    giorni. Il segnale migliora accumulando più scansioni via cron.
-3. ~~**Deploy del backend online**~~ — in corso: `render.yaml` (in root,
-   con `rootDir: scraper`), `Procfile` e `requirements-api.txt` sono pronti
-   per un deploy su [Render](https://render.com) (piano free). Il codice è
-   già su GitHub. Passi che restano da fare tu (serve un account sul
-   servizio, non automatizzabile da qui):
-   - Su Render: **New → Blueprint**, collega il repo `Taglio`. Render trova
-     `render.yaml` in root automaticamente e propone il servizio
-     `taglio-api` — conferma e avvia il deploy.
-   - `aggregated.json` deve restare committato nel repo (il servizio serve
-     solo dati già generati, non fa scraping da solo — lo scraping resta un
-     processo locale/cron, vedi sotto). Dopo ogni scan+aggregate locale,
-     `git add scraper/aggregated.json && git commit && git push`: se
-     l'auto-deploy di Render è attivo (lo è di default sul branch
-     collegato), il nuovo deploy parte da solo al push.
-   - Aggiorna `CORS` in `api.py` (`allow_origins`) e `API_BASE_URL` in
-     `site/taglio-demo.html` con l'URL pubblico assegnato da Render (es.
-     `https://taglio-api.onrender.com`), poi ripubblica il sito.
+3. ~~**Deploy del backend online**~~ — fatto: il codice è su GitHub
+   (`github.com/tmysceppa-ctrl/Taglio`), il backend gira su Render come
+   servizio `taglio-api` (piano free) su **https://taglio-api.onrender.com**,
+   e `site/taglio-demo.html` (`API_BASE_URL`) punta lì invece che a
+   localhost. `render.yaml` sta nella root del repo con `rootDir: scraper`:
+   Render cerca il blueprint solo in root, non nelle sottocartelle, quindi
+   il file va tenuto lì anche in futuro.
+   - **Mantenere aggiornati i dati**: rifai scan + aggregate in locale
+     (vedi sopra), poi `git add scraper/aggregated.json && git commit &&
+     git push` — l'auto-deploy di Render riparte da solo al push.
+   - **Piano free e "sonno"**: dopo un periodo di inattività Render mette in
+     pausa il servizio; la prima richiesta successiva impiega 30-50 secondi
+     a risvegliarlo (normale, non un bug). Se diventa un problema, il piano
+     a pagamento di Render lo evita, oppure si può pingare l'endpoint
+     `/api/health` periodicamente per tenerlo sveglio.
 4. **Database persistente**: sostituire i file JSON con Postgres quando il
    volume di dati/testate cresce.
 5. ~~**Piano tarato sul budget + posizionamento per testata**~~ — fatto:
