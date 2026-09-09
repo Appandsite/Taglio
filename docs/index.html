@@ -1033,36 +1033,111 @@
     }
   }
 
-  // ---------- Corrispondenza zona geografica → testate locali ----------
-  // Se il cliente indica una zona, le testate locali di quella zona
-  // ricevono una spinta nel piano: altrimenti una piccola attività locale
-  // vedrebbe comunque proposte prima le grandi testate nazionali solo
-  // perché più "rilevanti" in generale, anche quando quella del suo
-  // territorio sarebbe la scelta più sensata.
-  const REGION_TESTATA = [
-    [['bergamo'], ['eco di bergamo']],
-    [['trieste', 'friuli', 'venezia giulia', 'fvg'], ['il piccolo']],
-    [['sardegna', 'cagliari', 'sassari'], ['nuova sardegna', 'unione sarda']],
-    [['sicilia', 'palermo', 'catania'], ['giornale di sicilia', 'quotidiano di sicilia']],
-    [['calabria', 'reggio calabria'], ['gazzetta del sud']],
-    [['puglia', 'bari', 'foggia', 'lecce', 'taranto'], ['gazzetta del mezzogiorno', 'quotidiano di puglia']],
-    [['basilicata', 'potenza', 'matera'], ['quotidiano del sud']],
-    [['toscana', 'firenze'], ['la nazione']],
-    [['livorno'], ['il tirreno']],
-    [['emilia', 'bologna', 'romagna'], ['resto del carlino']],
-    [['campania', 'napoli'], ['il mattino']],
-    [['marche', 'ancona'], ['corriere adriatico']],
-    [['liguria', 'genova'], ['secolo xix']],
-    [['lazio', 'roma'], ['il tempo', 'il messaggero']],
+  // ---------- Geo-compatibilità testata ↔ mercato dell'azienda ----------
+  // Corretto il 9/9/2026 dopo un caso reale (azienda di Milano, settore
+  // serramenti): il piano proponeva come prime scelte La Nuova Sardegna e
+  // Il Piccolo (Trieste), pur avendo l'AI dedotto correttamente "mercato
+  // Lombardia". Causa: 1) mancava del tutto una voce Lombardia/Milano in
+  // questa mappa (Il Giorno non era classificato da nessuna parte), quindi
+  // "Milano" non attivava nessun boost; 2) non esisteva alcuna PENALITÀ per
+  // chi è di un'altra regione, solo un boost per chi combacia — una
+  // testata regionale sbagliata competeva alla pari con una nazionale.
+  // Ogni gruppo qui sotto rappresenta UNA regione italiana: "keywords" serve
+  // a riconoscere quella regione in un testo libero (zona utente o
+  // deduzione AI), "testate" elenca le testate di questo progetto legate a
+  // quella regione con il loro raggio (REGION = tutta la regione, LOCAL =
+  // una città/provincia specifica dentro quella regione).
+  const GEO_TESTATA = [
+    { regione: 'Lombardia', keywords: ['milano', 'lombardia', 'bergamo', 'brescia', 'monza', 'como', 'pavia', 'cremona', 'mantova', 'varese', 'lecco', 'lodi', 'sondrio'],
+      testate: [{ match: 'il giorno', scope: 'REGION' }, { match: 'eco di bergamo', scope: 'LOCAL' }] },
+    { regione: 'Friuli-Venezia Giulia', keywords: ['trieste', 'friuli', 'venezia giulia', 'fvg', 'udine', 'pordenone', 'gorizia'],
+      testate: [{ match: 'il piccolo', scope: 'REGION' }] },
+    { regione: 'Sardegna', keywords: ['sardegna', 'cagliari', 'sassari', 'nuoro', 'oristano'],
+      testate: [{ match: 'nuova sardegna', scope: 'REGION' }, { match: 'unione sarda', scope: 'REGION' }] },
+    { regione: 'Sicilia', keywords: ['sicilia', 'palermo', 'catania', 'messina', 'siracusa', 'trapani', 'ragusa', 'agrigento', 'caltanissetta', 'enna'],
+      testate: [{ match: 'giornale di sicilia', scope: 'REGION' }, { match: 'quotidiano di sicilia', scope: 'REGION' }] },
+    { regione: 'Calabria', keywords: ['calabria', 'reggio calabria', 'catanzaro', 'cosenza', 'crotone', 'vibo valentia'],
+      testate: [{ match: 'gazzetta del sud', scope: 'REGION' }] },
+    { regione: 'Puglia', keywords: ['puglia', 'bari', 'foggia', 'lecce', 'taranto', 'brindisi', 'barletta'],
+      testate: [{ match: 'gazzetta del mezzogiorno', scope: 'REGION' }, { match: 'quotidiano di puglia', scope: 'REGION' }] },
+    { regione: 'Basilicata', keywords: ['basilicata', 'potenza', 'matera'],
+      testate: [{ match: 'quotidiano del sud', scope: 'REGION' }] },
+    { regione: 'Toscana', keywords: ['toscana', 'firenze', 'livorno', 'pisa', 'siena', 'arezzo', 'prato', 'lucca', 'grosseto'],
+      testate: [{ match: 'la nazione', scope: 'REGION' }, { match: 'tirreno', scope: 'REGION' }] },
+    { regione: 'Emilia-Romagna', keywords: ['emilia', 'bologna', 'romagna', 'modena', 'parma', 'reggio emilia', 'ferrara', 'ravenna', 'rimini', 'piacenza'],
+      testate: [{ match: 'resto del carlino', scope: 'REGION' }] },
+    { regione: 'Campania', keywords: ['campania', 'napoli', 'salerno', 'caserta', 'avellino', 'benevento'],
+      testate: [{ match: 'il mattino', scope: 'REGION' }] },
+    { regione: 'Marche', keywords: ['marche', 'ancona', 'pesaro', 'macerata', 'ascoli'],
+      testate: [{ match: 'corriere adriatico', scope: 'REGION' }] },
+    { regione: 'Liguria', keywords: ['liguria', 'genova', 'la spezia', 'savona', 'imperia'],
+      testate: [{ match: 'secolo xix', scope: 'REGION' }] },
+    { regione: 'Lazio', keywords: ['lazio', 'roma', 'latina', 'frosinone', 'viterbo', 'rieti'],
+      testate: [{ match: 'il tempo', scope: 'REGION' }, { match: 'il messaggero', scope: 'REGION' }] },
   ];
 
-  function testateRilevantiPerZona(zona){
-    if(!zona) return [];
-    const z = zona.toLowerCase();
-    for(const [keywords, testate] of REGION_TESTATA){
-      if(keywords.some(k => z.includes(k))) return testate;
+  // Raggio d'azione della testata: NATIONAL per chi non è in nessun gruppo
+  // sopra (i grandi quotidiani/settimanali nazionali, i verticali tech/food/
+  // moda online) — mai penalizzata per geografia, resta sempre candidata.
+  function classificaGeoTestata(nome){
+    const n = nome.toLowerCase();
+    for(const gruppo of GEO_TESTATA){
+      for(const t of gruppo.testate){
+        if(n.includes(t.match)) return { scope: t.scope, regione: gruppo.regione };
+      }
     }
-    return [];
+    return { scope: 'NATIONAL', regione: null };
+  }
+
+  function regioneDaTesto(testo){
+    if(!testo) return null;
+    const z = testo.toLowerCase();
+    for(const gruppo of GEO_TESTATA){
+      if(gruppo.keywords.some(k => z.includes(k))) return gruppo.regione;
+    }
+    return null;
+  }
+
+  // Determina il mercato geografico dell'azienda, in ordine di priorità
+  // (istruzioni del 9/9/2026): 1) zona inserita a mano dal cliente nel
+  // wizard, 2) deduzione dell'AI dal sito reale (solo con confidenza HIGH o
+  // MEDIUM — con LOW la trattiamo come non determinabile), 3) UNKNOWN. Mai
+  // inventare una zona: UNKNOWN/NATIONAL vogliono dire "nessun vincolo
+  // geografico da applicare", non "l'azienda è nazionale per certo".
+  function determinaGeoAzienda(zonaManuale, ideas){
+    const testoZona = (zonaManuale && zonaManuale.trim()) ? zonaManuale.trim() : null;
+    if(testoZona){
+      const regioneRiconosciuta = regioneDaTesto(testoZona);
+      return { scope: 'REGIONAL', regioneTesto: testoZona.toLowerCase(), regioneCanonica: regioneRiconosciuta, fonte: 'utente' };
+    }
+    if(ideas && ideas.market_scope && ideas.market_scope !== 'UNKNOWN' &&
+       (ideas.market_confidence === 'HIGH' || ideas.market_confidence === 'MEDIUM')){
+      if(ideas.market_scope === 'NATIONAL'){
+        return { scope: 'NATIONAL', regioneTesto: null, regioneCanonica: null, fonte: 'ai' };
+      }
+      if(ideas.market_region && ideas.market_region.trim()){
+        const testo = ideas.market_region.trim();
+        return { scope: ideas.market_scope, regioneTesto: testo.toLowerCase(), regioneCanonica: regioneDaTesto(testo), fonte: 'ai' };
+      }
+    }
+    return { scope: 'UNKNOWN', regioneTesto: null, regioneCanonica: null, fonte: 'nessuna' };
+  }
+
+  // Vero solo se NON c'è incompatibilità geografica accertata. Un'azienda
+  // NATIONAL/UNKNOWN non applica nessun vincolo (comportamento invariato
+  // per chi non ha indicato/dedotto una zona). Una testata NATIONAL, o una
+  // testata di cui non conosciamo la regione, non viene mai penalizzata:
+  // penalizziamo solo un disallineamento territoriale accertato.
+  function geoCompatibile(testataGeo, aziendaGeo){
+    if(aziendaGeo.scope === 'UNKNOWN' || aziendaGeo.scope === 'NATIONAL') return true;
+    if(testataGeo.scope === 'NATIONAL' || !testataGeo.regione) return true;
+    const regioneTestata = testataGeo.regione.toLowerCase();
+    if(aziendaGeo.regioneCanonica && aziendaGeo.regioneCanonica.toLowerCase() === regioneTestata) return true;
+    if(aziendaGeo.regioneTesto === regioneTestata) return true;
+    const gruppo = GEO_TESTATA.find(g => g.regione.toLowerCase() === regioneTestata);
+    if(gruppo && aziendaGeo.regioneTesto &&
+       gruppo.keywords.some(k => aziendaGeo.regioneTesto.includes(k) || k.includes(aziendaGeo.regioneTesto))) return true;
+    return false;
   }
 
   // Homepage delle testate note (domini verificati, stessi di scraper/config.yaml).
@@ -1278,65 +1353,84 @@
   // comunque Corriere della Sera, che da solo può costare più dell'intero
   // budget. Qui si bilancia rilevanza e sostenibilità economica, e si
   // preferisce un mix di testate diverse piuttosto che poche costose.
-  function buildAllocationPlan(candidates, budget, periodoKey, zonaGeografica){
-    if(!candidates.length) return [];
+  // Tolleranza massima sul budget indicato: il piano non deve mai avere un
+  // costo minimo complessivo superiore a budget*1.10 (istruzioni del
+  // 9/9/2026, punto 4 — prima capitava un piano da €4.000 di costo minimo
+  // per un budget di €2.000, perché il vecchio limite (15%, tollerato dopo
+  // le prime 2 testate) si misurava sul costo MEDIO, non sul minimo).
+  const BUDGET_TOLLERANZA = 1.10;
+  // Penalità per una testata regionale/locale di un territorio diverso da
+  // quello dell'azienda: non un'esclusione a parte, ma un fattore così
+  // basso da non poter mai vincere la selezione — le teniamo comunque
+  // tracciate separatamente (vedi sotto) per poterle segnalare come escluse.
+  const GEO_INCOMPATIBILE_FATTORE = 0.05;
 
-    const testateLocali = testateRilevantiPerZona(zonaGeografica);
+  function buildAllocationPlan(candidates, budget, periodoKey, aziendaGeo){
+    if(!candidates.length) return { selected: [], escluseGeografiche: [] };
 
     const scored = candidates.map((t, i)=>{
       const est = estimateCost(t.nome, t.formato, periodoKey, t.formatoCategoria);
       const costMid = (est.totMin + est.totMax) / 2;
-      // Rilevanza: la quota originale (presenza pubblicitaria reale, o il
-      // peso assegnato nei dati mock) se c'è; altrimenti l'ordine in elenco,
-      // dando comunque più peso alle prime voci.
+      // Rilevanza: la quota originale (presenza pubblicitaria reale — DATA
+      // AVAILABILITY, cioè "quanto sappiamo di questa testata") se c'è,
+      // altrimenti l'ordine in elenco. Da sola NON dice se la testata è
+      // adatta all'azienda: quello lo decide la geo-compatibilità qui sotto
+      // (MEDIA FIT), applicata come fattore separato, non mescolata dentro
+      // lo stesso numero fin dall'inizio — vedi istruzioni del 9/9/2026,
+      // punto 2 ("non confondere disponibilità dati con affinità").
       let rilevanza = (typeof t.quota === 'number') ? t.quota : Math.max(100 - i * 8, 10);
-      // Se il cliente ha indicato una zona e questa testata è quella del
-      // territorio, vale di più di quanto direbbe la sola presenza
-      // pubblicitaria generica — è il motivo per cui la boostiamo qui e non
-      // la lasciamo semplicemente competere alla pari.
-      const isLocale = testateLocali.some(k => t.nome.toLowerCase().includes(k));
-      if(isLocale) rilevanza *= 1.8;
-      return { ...t, est, costMid, rilevanza, zonaMatch: isLocale };
+      const testataGeo = classificaGeoTestata(t.nome);
+      const compatibile = geoCompatibile(testataGeo, aziendaGeo);
+      const zonaMatch = compatibile && testataGeo.scope !== 'NATIONAL' &&
+        aziendaGeo.scope !== 'UNKNOWN' && aziendaGeo.scope !== 'NATIONAL';
+      if(zonaMatch) rilevanza *= 1.8;
+      if(!compatibile) rilevanza *= GEO_INCOMPATIBILE_FATTORE;
+      return { ...t, est, costMid, rilevanza, testataGeo, zonaMatch, geoCompatibile: compatibile };
     });
 
-    // Scarta le testate il cui costo minimo da solo supera l'intero budget:
-    // non sono proponibili in nessun mix, quanto siano rilevanti.
-    let affordable = scored.filter(t => t.est.totMin <= budget);
-    if(affordable.length === 0){
-      // Budget molto ridotto per qualunque opzione: tieni comunque le 2 più
-      // economiche, così il piano resta utile invece di restare vuoto.
-      affordable = [...scored].sort((a, b)=> a.costMid - b.costMid).slice(0, 2);
-    }
+    // Le testate geograficamente incompatibili con un'azienda locale/
+    // regionale sono escluse del tutto dal piano, non solo penalizzate in
+    // classifica: "non deve poter diventare raccomandazione primaria"
+    // significa qui "non deve poter essere raccomandazione", punto.
+    // Restano comunque tracciate per il debug/report ("escluse per
+    // incompatibilità geografica").
+    const compatibili = scored.filter(t => t.geoCompatibile);
+    const escluseGeografiche = scored.filter(t => !t.geoCompatibile);
 
-    // Penalizza le testate che da sole richiederebbero una fetta grande del
-    // budget: così a parità di rilevanza vince l'opzione più sostenibile,
-    // invece di tornare sempre alle stesse testate principali.
-    affordable.forEach(t=>{
+    compatibili.forEach(t=>{
       const frazioneBudget = t.costMid / budget;
       const penalita = Math.max(0, frazioneBudget - 0.35) * 1.8;
       t.punteggio = t.rilevanza / (1 + penalita);
     });
-    affordable.sort((a, b)=> b.punteggio - a.punteggio);
+    compatibili.sort((a, b)=> b.punteggio - a.punteggio);
 
-    // Compone il mix finale restando dentro un margine ragionevole sul
-    // budget totale, con un tetto di testate per non frammentare troppo un
-    // budget piccolo.
+    // Compone il mix finale SENZA MAI superare budget*1.10 sul costo minimo
+    // complessivo, e senza forzare una selezione se nessuna combinazione
+    // affidabile rientra: "nessuna raccomandazione" è un esito valido
+    // quanto un piano completo (istruzioni del 9/9/2026, punti 4 e 5) — a
+    // differenza di prima, qui non c'è più nessun ripiego che aggiunge
+    // comunque le 2 testate più economiche o la prima disponibile fuori budget.
+    const tettoBudget = budget * BUDGET_TOLLERANZA;
     const selected = [];
-    let speso = 0;
-    for(const t of affordable){
+    let spesoMin = 0;
+    for(const t of compatibili){
       if(selected.length >= 6) break;
-      if(speso + t.costMid > budget * 1.15 && selected.length >= 2) continue;
+      if(spesoMin + t.est.totMin > tettoBudget) continue;
       selected.push(t);
-      speso += t.costMid;
+      spesoMin += t.est.totMin;
     }
-    if(selected.length === 0) selected.push(affordable[0]);
+
+    if(selected.length === 0) return { selected: [], escluseGeografiche };
 
     const totaleRilevanza = selected.reduce((s, t)=> s + t.rilevanza, 0) || 1;
     selected.forEach(t=>{ t.quota = Math.round(100 * t.rilevanza / totaleRilevanza * 10) / 10; });
 
-    // Affinità e motivazione: CALCOLATE da Taglio a partire dai punteggi già
-    // pronti sopra, non generate dall'AI (una chiamata AI per testata
-    // costerebbe inutilmente di più — vedi istruzioni del 9/9, "COSTI").
+    // Affinità e motivazione: CALCOLATE da Taglio a partire da geo-
+    // compatibilità, budget e punteggio già pronti sopra — mai "Alta" per
+    // una testata geograficamente incompatibile, che qui però non può più
+    // nemmeno comparire (esclusa sopra). Non generate dall'AI (una chiamata
+    // AI per testata costerebbe inutilmente di più — vedi istruzioni del
+    // 9/9, "COSTI").
     const puntggiOrdinati = [...selected].sort((a, b)=> b.punteggio - a.punteggio);
     selected.forEach(t=>{
       const posizione = puntggiOrdinati.indexOf(t);
@@ -1345,13 +1439,14 @@
 
       const motivi = ['ha segnali pubblicitari osservati direttamente'];
       if(t.zonaMatch) motivi.unshift('è la testata del territorio indicato');
+      else if(t.testataGeo.scope === 'NATIONAL') motivi.push('è una testata a diffusione nazionale, compatibile con qualunque zona');
       const frazioneBudget = t.costMid / budget;
       if(frazioneBudget <= 0.35) motivi.push('costo compatibile con il budget indicato senza assorbirne una quota eccessiva');
       else motivi.push('richiede una parte consistente del budget indicato');
       t.motivazione = motivi.join('; ') + '.';
     });
 
-    return selected;
+    return { selected, escluseGeografiche };
   }
 
   function formatEuro(n){
@@ -1519,8 +1614,13 @@
     const [, ideas, alloc] = await Promise.all([animation, ideasPromise, allocPromise]);
     fill.style.width = '100%';
     setTimeout(()=>{
+      // La zona esplicita dell'utente ha sempre priorità; solo se manca si
+      // usa il mercato dedotto dall'AI dal sito reale (e solo con
+      // confidenza sufficiente) — vedi determinaGeoAzienda e istruzioni del
+      // 9/9/2026 sulla correzione del ranking geografico.
+      const aziendaGeo = determinaGeoAzienda(zonaGeografica, ideas);
       ultimoContestoRisultati = { sectorLabel: mockData.label, name, alloc, zonaGeografica };
-      renderRisultatiBase(mockData.label, name, alloc, zonaGeografica);
+      renderRisultatiBase(mockData.label, name, alloc, aziendaGeo);
       renderRisultatiAI(ideas, erroreAI, name);
     }, 300);
   }
@@ -1543,6 +1643,15 @@
     }
     if(btn){ btn.disabled = false; btn.textContent = 'Riprova analisi AI'; }
     renderRisultatiAI(ideas, erroreAI, ultimoContestoRisultati.name);
+    // Se la AI ora ha risposto (magari con un mercato dedotto dal sito che
+    // al primo tentativo non avevamo), l'allocazione va ricalcolata: prima
+    // di questo fix il piano restava quello (eventualmente UNKNOWN) del
+    // primo tentativo anche dopo un retry riuscito.
+    if(ideas){
+      const { sectorLabel, name, alloc, zonaGeografica } = ultimoContestoRisultati;
+      const aziendaGeo = determinaGeoAzienda(zonaGeografica, ideas);
+      renderRisultatiBase(sectorLabel, name, alloc, aziendaGeo);
+    }
   }
   document.getElementById('retryAiBtn').addEventListener('click', retryAnalisiAI);
 
@@ -1589,7 +1698,7 @@
     SUGGESTION: 'Suggerimento AI'
   };
 
-  function renderRisultatiBase(sectorLabel, name, alloc, zonaGeografica){
+  function renderRisultatiBase(sectorLabel, name, alloc, aziendaGeo){
     document.getElementById('loadingView').style.display = 'none';
     document.getElementById('resultsView').style.display = 'block';
 
@@ -1614,7 +1723,38 @@
     const periodoKey = document.getElementById('period').value;
     let totMinSum = 0, totMaxSum = 0;
 
-    const piano = buildAllocationPlan(alloc.osservate, state.budget, periodoKey, zonaGeografica);
+    const { selected: piano, escluseGeografiche } = buildAllocationPlan(alloc.osservate, state.budget, periodoKey, aziendaGeo);
+    // Fattori di ogni testata visibili in console per debug interno (mai
+    // mostrati in UI): geo-compatibilità, punteggio, rilevanza — vedi
+    // istruzioni del 9/9/2026, punto 3 ("mostra i singoli fattori").
+    console.debug('[Taglio] mercato azienda:', aziendaGeo, '— piano:', piano.map(t=>({nome:t.nome, scope:t.testataGeo.scope, regione:t.testataGeo.regione, zonaMatch:t.zonaMatch, rilevanza:t.rilevanza, punteggio:t.punteggio, affinita:t.affinita})), '— escluse geografiche:', escluseGeografiche.map(t=>({nome:t.nome, scope:t.testataGeo.scope, regione:t.testataGeo.regione})));
+
+    if(piano.length === 0){
+      const vuoto = document.createElement('div');
+      vuoto.className = 'price-disclaimer';
+      vuoto.textContent = 'Con i dati attualmente disponibili non abbiamo trovato una combinazione di testate sufficientemente coerente con la tua area geografica, il tuo obiettivo e il budget indicato. Preferiamo non suggerirti investimenti poco coerenti solo per completare il piano.';
+      allocList.appendChild(vuoto);
+
+      const pertinenti = (aziendaGeo.scope === 'REGIONAL' || aziendaGeo.scope === 'LOCAL')
+        ? (alloc.nonDisponibili || []).filter(nome => geoCompatibile(classificaGeoTestata(nome), aziendaGeo) && classificaGeoTestata(nome).scope !== 'NATIONAL')
+        : [];
+      if(pertinenti.length){
+        const pertEl = document.createElement('div');
+        pertEl.className = 'price-disclaimer';
+        pertEl.style.marginTop = '10px';
+        pertEl.innerHTML = `<strong>Testate potenzialmente pertinenti — dati insufficienti:</strong> ${pertinenti.map(escapeXml).join(', ')}.`;
+        allocList.appendChild(pertEl);
+      }
+      if(escluseGeografiche.length){
+        const escEl = document.createElement('div');
+        escEl.className = 'price-disclaimer';
+        escEl.style.marginTop = '10px';
+        escEl.textContent = `${escluseGeografiche.length} testate con dati reali sono state escluse perché fuori dalla tua area geografica.`;
+        allocList.appendChild(escEl);
+      }
+      noteEl.textContent = 'Nota: nessuna testata raccomandata in questo caso — meglio nessun piano che un piano poco coerente.';
+      return;
+    }
 
     piano.forEach(t=>{
       const est = t.est;
@@ -1688,11 +1828,30 @@
     allocList.appendChild(priceDisclaimer);
 
     if(alloc.nonDisponibili && alloc.nonDisponibili.length){
-      const nonDispEl = document.createElement('div');
-      nonDispEl.className = 'price-disclaimer';
-      nonDispEl.style.marginTop = '14px';
-      nonDispEl.innerHTML = `<strong>Altre testate monitorate, dati non ancora disponibili:</strong> ${alloc.nonDisponibili.map(escapeXml).join(', ')}.`;
-      allocList.appendChild(nonDispEl);
+      // Se conosciamo la zona dell'azienda, separiamo le testate senza dati
+      // che sarebbero comunque del territorio giusto ("potenzialmente
+      // pertinenti") dal resto — mai inventando formato/costo per loro,
+      // solo segnalando che meriterebbero una rilevazione futura.
+      const isLocaleORegionale = aziendaGeo.scope === 'REGIONAL' || aziendaGeo.scope === 'LOCAL';
+      const pertinenti = isLocaleORegionale
+        ? alloc.nonDisponibili.filter(nome => { const g = classificaGeoTestata(nome); return g.scope !== 'NATIONAL' && geoCompatibile(g, aziendaGeo); })
+        : [];
+      const altre = alloc.nonDisponibili.filter(nome => !pertinenti.includes(nome));
+
+      if(pertinenti.length){
+        const pertEl = document.createElement('div');
+        pertEl.className = 'price-disclaimer';
+        pertEl.style.marginTop = '14px';
+        pertEl.innerHTML = `<strong>Testate potenzialmente pertinenti — dati insufficienti:</strong> ${pertinenti.map(escapeXml).join(', ')}.`;
+        allocList.appendChild(pertEl);
+      }
+      if(altre.length){
+        const nonDispEl = document.createElement('div');
+        nonDispEl.className = 'price-disclaimer';
+        nonDispEl.style.marginTop = '14px';
+        nonDispEl.innerHTML = `<strong>Altre testate monitorate, dati non ancora disponibili:</strong> ${altre.map(escapeXml).join(', ')}.`;
+        allocList.appendChild(nonDispEl);
+      }
     }
 
     noteEl.textContent = 'Nota: l\'allocazione per testata arriva dai dati rilevati dallo scraping; le testate senza rilevazioni sono elencate separatamente, senza dati inventati.';

@@ -539,6 +539,11 @@ Obiettivo campagna: {payload.obiettivo or 'non indicato'}
 
 REGOLA FONDAMENTALE: non inventare mai clienti, recensioni, fatturato, audience, diffusione, CPM, prezzi ufficiali, certificazioni, partnership, risultati di campagne, o dati demografici che non hai. Se qualcosa non è rilevabile dai dati disponibili, scrivi esplicitamente "non rilevato dal sito" o "non determinabile con i dati disponibili" invece di inventarlo.
 
+Determina anche il raggio d'azione geografico REALE dell'azienda (serve al motore di allocazione budget, non solo come testo):
+- "market_scope": "LOCAL" (una sola città/provincia), "REGIONAL" (una regione), "NATIONAL" (tutta Italia), o "UNKNOWN" se non determinabile
+- "market_region": il nome della regione italiana se LOCAL o REGIONAL (es. "Lombardia"), altrimenti null
+- "market_confidence": "HIGH" se il sito lo dichiara esplicitamente (es. zona di consegna/intervento, sede operativa, "serviamo la provincia di..."), "MEDIUM" se dedotto ragionevolmente ma non dichiarato esplicitamente, "LOW" se è solo un'ipotesi debole. Senza contenuto reale di un sito, o se il sito non dà indizi geografici, usa "UNKNOWN"/null/"LOW" — non indovinare.
+
 Genera:
 - "analisi_azienda": 2-3 frasi su cosa fa davvero questa azienda secondo quello che hai letto (o, se non hai contenuto reale, una frase che lo dichiara apertamente)
 - "consigli_su_misura": 4-5 consigli CONCRETI per la campagna pubblicitaria, ciascuno un oggetto {{"testo":"...","tipo":"FACT|INFERENCE|SUGGESTION"}} secondo la regola sopra — non genericità valide per qualsiasi azienda del settore
@@ -548,7 +553,7 @@ Genera:
 Tutte le idee devono essere realizzabili su carta stampata o adv editoriale digitale (niente tecnologie non disponibili su questi formati).
 
 Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo formato esatto:
-{{"analisi_azienda":"...","consigli_su_misura":[{{"testo":"...","tipo":"FACT"}},{{"testo":"...","tipo":"INFERENCE"}}],"idea_sicura":{{"titolo":"...","meccanismo":"...","perche":"..."}},"idee_audaci":[{{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}},{{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}}]}}
+{{"analisi_azienda":"...","market_scope":"LOCAL|REGIONAL|NATIONAL|UNKNOWN","market_region":"Lombardia","market_confidence":"HIGH|MEDIUM|LOW","consigli_su_misura":[{{"testo":"...","tipo":"FACT"}},{{"testo":"...","tipo":"INFERENCE"}}],"idea_sicura":{{"titolo":"...","meccanismo":"...","perche":"..."}},"idee_audaci":[{{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}},{{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}}]}}
 
 "novita" è un numero da 0 a 100. Scrivi tutti i testi in italiano."""
 
@@ -627,8 +632,26 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
         elif isinstance(c, str):
             consigli.append({"testo": c, "tipo": "INFERENCE"})
 
+    # Il raggio d'azione geografico dedotto dall'AI diventa un input
+    # strutturato per il motore di allocazione (buildAllocationPlan nel
+    # frontend), non solo testo descrittivo — vedi istruzioni del 9/9/2026,
+    # correzione ranking punto 6. Whitelist rigida: mai fidarsi di un valore
+    # libero del modello per un campo poi usato in una logica di esclusione.
+    market_scope = parsed.get("market_scope")
+    if market_scope not in ("LOCAL", "REGIONAL", "NATIONAL", "UNKNOWN"):
+        market_scope = "UNKNOWN"
+    market_confidence = parsed.get("market_confidence")
+    if market_confidence not in ("HIGH", "MEDIUM", "LOW"):
+        market_confidence = "LOW"
+    market_region = parsed.get("market_region")
+    if not isinstance(market_region, str) or not market_region.strip() or market_scope not in ("LOCAL", "REGIONAL"):
+        market_region = None
+
     return {
         "analisi_azienda": parsed.get("analisi_azienda", ""),
+        "market_scope": market_scope,
+        "market_region": market_region,
+        "market_confidence": market_confidence,
         "consigli_su_misura": consigli,
         "idea_sicura": parsed["idea_sicura"],
         "idee_audaci": parsed["idee_audaci"],
