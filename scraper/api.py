@@ -596,7 +596,14 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
             },
             json={
                 "model": ANTHROPIC_MODEL,
-                "max_tokens": 2500,
+                # Lo schema esteso (profilo azienda + confronto competitor +
+                # messaggio pubblicitario + 3 livelli di creatività) produce
+                # una risposta più lunga del vecchio formato: con 2500 il
+                # modello troncava a metà stringa quando c'era anche un
+                # competitor reale da confrontare, rompendo il JSON
+                # (osservato in produzione il 9/9/2026, stop_reason
+                # "max_tokens" con output_tokens già al tetto).
+                "max_tokens": 4500,
                 # Il "thinking" esteso di alcuni modelli Claude consuma parte
                 # del budget di max_tokens PRIMA di produrre il testo vero e
                 # proprio: su un prompt come questo può da solo esaurire
