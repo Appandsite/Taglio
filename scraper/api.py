@@ -1047,7 +1047,12 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
                 "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
                 "messages": [{"role": "user", "content": prompt}],
             },
-            timeout=90,
+            # Con fino a 6 ricerche web reali + uno schema di risposta esteso,
+            # le chiamate riuscite osservate in produzione durano regolarmente
+            # 80-100s: con timeout=90 una parte di richieste legittime (non
+            # bloccate, solo lente) veniva interrotta e mostrata come "AI non
+            # ha risposto in tempo" — osservato in test reale il 9/9/2026.
+            timeout=170,
         )
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=504, detail="Il motore AI non ha risposto in tempo. Riprova.")
