@@ -60,6 +60,44 @@ from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger("taglio")
 
+
+def _estrai_oggetto_json(text: str) -> Optional[str]:
+    """Estrae il primo oggetto JSON bilanciato da un testo che può avere
+    prosa prima e/o dopo (osservato con web_search attivo: il modello a
+    volte aggiunge una frase introduttiva o un commento finale nonostante
+    l'istruzione di rispondere SOLO con JSON). Un semplice regex "greedy"
+    dal primo '{' all'ultimo '}' del testo intero si rompe non appena c'è
+    QUALSIASI '{' o '}' dopo il JSON vero (anche dentro un blocco di
+    codice di esempio nel commento finale) — qui invece si conta la
+    profondità delle graffe rispettando le stringhe tra virgolette, così
+    ci si ferma esattamente alla graffa di chiusura corrispondente alla
+    prima di apertura."""
+    inizio = text.find("{")
+    if inizio == -1:
+        return None
+    profondita = 0
+    dentro_stringa = False
+    escape = False
+    for i in range(inizio, len(text)):
+        ch = text[i]
+        if dentro_stringa:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                dentro_stringa = False
+            continue
+        if ch == '"':
+            dentro_stringa = True
+        elif ch == "{":
+            profondita += 1
+        elif ch == "}":
+            profondita -= 1
+            if profondita == 0:
+                return text[inizio:i + 1]
+    return None
+
 from taxonomy import categorie_rilevanti
 
 # ---------------------------------------------------------------------------
@@ -1031,14 +1069,18 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
         # finale è nell'ultimo/unico blocco "text").
         text = "".join(block.get("text", "") for block in data.get("content", []) if block.get("type") == "text")
         # Con il tool di ricerca web attivo il modello a volte antepone una
-        # breve frase di transizione prima del JSON (es. "Ho raccolto
-        # abbastanza informazioni...") nonostante l'istruzione di rispondere
-        # SOLO con JSON — osservato in test reale il 9/9/2026. Cerchiamo il
-        # blocco {...} più esterno invece di fidarci che inizi a carattere 0.
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if not match:
-            raise ValueError("nessun blocco JSON trovato nella risposta")
-        parsed = json.loads(match.group(0))
+        # breve frase di transizione prima del JSON, o ne aggiunge una dopo
+        # (es. "Ho raccolto abbastanza informazioni...", oppure un commento
+        # finale) nonostante l'istruzione di rispondere SOLO con JSON —
+        # osservato in test reale il 9/9/2026. Un regex "greedy" dal primo
+        # '{' all'ultimo '}' del testo si era rivelato fragile: qualunque
+        # graffa in un commento finale rompeva il parsing. _estrai_oggetto_
+        # json conta la profondità delle graffe e si ferma alla chiusura
+        # corretta, indipendentemente da cosa segue nel testo.
+        oggetto = _estrai_oggetto_json(text)
+        if oggetto is None:
+            raise ValueError("nessun blocco JSON bilanciato trovato nella risposta")
+        parsed = json.loads(oggetto)
     except Exception as exc:
         # Diagnostica solo nei log del server (mai al client): stop_reason
         # dice se il modello si è fermato per max_tokens (JSON troncato) o
