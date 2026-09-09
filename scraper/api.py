@@ -1101,7 +1101,17 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
         oggetto = _estrai_oggetto_json(text)
         if oggetto is None:
             raise ValueError("nessun blocco JSON bilanciato trovato nella risposta")
-        parsed = json.loads(oggetto)
+        try:
+            parsed = json.loads(oggetto)
+        except json.JSONDecodeError:
+            # Diagnosticato in produzione il 9/9/2026: stop_reason=end_turn
+            # (risposta completa, non troncata) ma con una virgola di troppo
+            # prima di una "}" o "]" di chiusura — un errore di generazione
+            # comune nei modelli, non ammesso dal parser JSON rigoroso di
+            # Python. Ripuliamo solo questo pattern specifico e ritentiamo,
+            # invece di accettare qualunque JSON "quasi valido".
+            oggetto_pulito = re.sub(r",(\s*[}\]])", r"\1", oggetto)
+            parsed = json.loads(oggetto_pulito)
     except Exception as exc:
         # Diagnostica solo nei log del server (mai al client): stop_reason
         # dice se il modello si è fermato per max_tokens (JSON troncato) o
