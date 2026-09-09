@@ -504,7 +504,8 @@
       <div class="upsell-card">
         <div class="idea-mech">Abbonamento Taglio</div>
         <div class="upsell-price">€ 4,99 <span>/ mese, disdicibile quando vuoi</span></div>
-        <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.5;margin:0 0 4px;">Ricerche illimitate, dati reali aggiornati da 62 testate, contatti pubblicitari, idee creative AI.</p>
+        <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.5;margin:0 0 4px;">Ricerche illimitate, monitoraggio di decine di testate, dati pubblicitari rilevati periodicamente, analisi AI e suggerimenti personalizzati.</p>
+        <p style="font-size:12px;color:var(--ink-faint);line-height:1.5;margin:8px 0 0;" id="upsellDatasetLine"></p>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="checkoutBtn" type="button">Abbonati ora</button>
@@ -652,6 +653,15 @@
         <h2 id="resultsHeadline">Il tuo piano di posizionamento</h2>
         <p class="step-intro" id="resultsIntro"></p>
 
+        <div class="result-block" id="aiUnavailablePanel" style="display:none;">
+          <h3>Analisi AI</h3>
+          <p class="step-intro" style="margin-bottom:14px;">Analisi AI temporaneamente non disponibile. I dati rilevati sulle testate restano consultabili qui sotto.</p>
+          <p class="auth-error" id="aiRetryError" hidden></p>
+          <div class="btn-row" style="margin-top:0;">
+            <button class="btn btn-primary" id="retryAiBtn" type="button">Riprova analisi AI</button>
+          </div>
+        </div>
+
         <div class="result-block" id="strategyBlock" style="display:none;">
           <h3>Consigli su misura</h3>
           <p class="alloc-caption" id="strategyCaption"></p>
@@ -661,23 +671,24 @@
 
         <div class="result-block">
           <h3>Allocazione consigliata del budget</h3>
+          <p class="alloc-caption" id="datasetStatusLine"></p>
           <p class="alloc-caption">Selezione e stime tarate sul budget indicato — non sempre le testate più "importanti", ma quelle che il budget può davvero coprire. Dove disponibile, il posizionamento consigliato si basa sulla densità di altri inserzionisti rilevata per zona di pagina, non sull'identificazione di competitor specifici.</p>
           <div id="allocList"></div>
         </div>
 
-        <div class="result-block">
-          <h3>Idea sicura</h3>
-          <div id="ideaSicura"></div>
+        <div id="ideeBlock">
+          <div class="result-block">
+            <h3>Idea sicura</h3>
+            <div id="ideaSicura"></div>
+          </div>
+
+          <div class="result-block">
+            <h3>Idee audaci</h3>
+            <div id="ideeAudaci"></div>
+          </div>
         </div>
 
-        <div class="result-block">
-          <h3>Idee audaci</h3>
-          <div id="ideeAudaci"></div>
-        </div>
-
-        <div class="demo-note">
-          Questa è una demo con dati simulati per illustrare il flusso. Nella versione live, allocazione e idee nascono dallo scraping delle testate e dal motore di raccomandazione descritto nel progetto.
-        </div>
+        <div class="demo-note" id="demoNote"></div>
 
         <div class="btn-row">
           <button class="btn btn-ghost" onclick="goTo(1)">Ricomincia demo</button>
@@ -777,6 +788,34 @@
     }
     showApp();
     renderUserBar();
+    caricaDatasetStatus();
+  }
+
+  // Numeri sempre letti dal backend, mai scritti a mano nel codice — prima
+  // il sito diceva sempre "62 testate" indipendentemente da quante ne
+  // avessero davvero dati (vedi audit del 9/9, punto 9). Se il backend non
+  // risponde, meglio nessuna riga che una cifra non verificata.
+  let datasetStatus = null;
+  async function caricaDatasetStatus(){
+    try{
+      const res = await fetch(API_BASE_URL + '/api/dataset-status');
+      if(!res.ok) throw new Error('status ' + res.status);
+      datasetStatus = await res.json();
+    } catch(err){
+      console.warn('Stato dataset non disponibile:', err);
+      datasetStatus = null;
+    }
+    const testo = formattaRigaDatasetStatus();
+    const upsellEl = document.getElementById('upsellDatasetLine');
+    if(upsellEl) upsellEl.textContent = testo;
+  }
+
+  function formattaRigaDatasetStatus(){
+    if(!datasetStatus) return '';
+    const data = datasetStatus.ultimo_aggiornamento
+      ? new Date(datasetStatus.ultimo_aggiornamento).toLocaleDateString('it-IT')
+      : 'non ancora disponibile';
+    return `${datasetStatus.testate_configurate} testate monitorate · ${datasetStatus.testate_con_dati} con rilevazioni disponibili · ultimo aggiornamento ${data}`;
   }
 
   function renderUserBar(){
@@ -918,190 +957,52 @@
     document.getElementById('budgetDisplay').textContent = '€ ' + parseInt(v).toLocaleString('it-IT');
   }
 
+  // Solo le etichette dei settori restano qui: testate/idee/prezzi non sono
+  // più dati di esempio inventati, ma arrivano tutti da backend reale
+  // (scraping per le testate, Anthropic per l'analisi AI). Nessun fallback
+  // mock: se una fonte reale non risponde, l'interfaccia lo dice, non lo nasconde.
   const SETTORE_DATA = {
-    automotive: {
-      label:'automotive',
-      testate:[
-        {nome:'Il Sole 24 Ore', formato:'Pagina intera, sezione Motori', quota:26},
-        {nome:'Corriere della Sera', formato:'Mezza pagina, weekend', quota:20},
-        {nome:'Quattroruote (online)', formato:'Banner leaderboard', quota:16},
-        {nome:'La Gazzetta dello Sport', formato:'Native, sezione Motori', quota:13},
-        {nome:'La Nazione', formato:'Mezza pagina, edizione locale', quota:9},
-        {nome:'Il Giornale', formato:'Banner, sezione Motori online', quota:8},
-        {nome:'Corriere Adriatico', formato:'Native, edizione locale', quota:8}
-      ],
-      consigliSuMisura:[
-        'Punta sul rapporto diretto e artigianale col cliente, che i grandi marchi automotive non possono replicare — rendilo esplicito nel messaggio, non solo nel servizio.',
-        'Sfrutta il radicamento territoriale: sulla stampa locale un messaggio di prossimità è credibile, su un grande quotidiano nazionale suonerebbe generico.',
-        'I grandi competitor presidiano quasi sempre le testate nazionali generaliste: i verticali di settore online restano spesso scoperti, con costi molto più bassi.',
-        'Considera un angolo di comunicazione sul post-vendita/assistenza invece che solo sul prodotto — è uno spazio che pochi occupano.'
-      ],
-      sicura:{titolo:'Confronto prestazioni in doppia pagina', meccanismo:'Comparazione diretta con dati tecnici', perche:'Il settore automotive premia contenuti informativi verificabili, coerente col tono istituzionale.'},
-      audaci:[
-        {titolo:'Falso bollettino meteo del traffico', meccanismo:'Rottura del formato atteso', perche:'Trasforma una rubrica di servizio in un annuncio, catturando attenzione senza sembrare pubblicità.', rischio:'Va chiarito subito che è un annuncio, per non generare confusione.', novita:78},
-        {titolo:'Pagina che si "ripiega" come un cruscotto', meccanismo:'Interazione fisica col formato carta', perche:'Il piegamento fisico crea un momento memorabile raro nella stampa automotive.', rischio:'Costo di stampa più alto e fattibilità da verificare con la tipografia.', novita:85}
-      ]
-    },
-    moda:{
-      label:'moda e lusso',
-      testate:[
-        {nome:'Vogue Italia (carta)', formato:'Doppia pagina editoriale', quota:24},
-        {nome:'Corriere della Sera', formato:'Inserto Style, prima pagina', quota:17},
-        {nome:'Elle Italia (Elle.it)', formato:'Native + gallery', quota:15},
-        {nome:'Grazia', formato:'Banner + native, sezione moda', quota:13},
-        {nome:'Io Donna', formato:'Mezza pagina', quota:11},
-        {nome:'Donna Moderna', formato:'Native', quota:11},
-        {nome:'Amica', formato:'Banner', quota:9}
-      ],
-      consigliSuMisura:[
-        'Usa il catalogo o una collezione ben definita come contenuto editoriale forte di per sé, non solo come annuncio da vendere.',
-        'Un tono meno patinato e più autentico può distinguersi in un settore dove il linguaggio pubblicitario è spesso molto simile tra i brand.',
-        'I grandi nomi del lusso concentrano il budget su poche testate premium: i femminili di fascia media e i digitali restano spesso meno affollati.',
-        'Racconta il dietro le quinte (materiali, produzione, persone): è un angolo ancora poco battuto nella pubblicità di settore.'
-      ],
-      sicura:{titolo:'Editoriale fotografico a doppia pagina', meccanismo:'Codice visivo alto, pochissimo testo', perche:'Coerente coi codici del lusso: l\'immagine parla, il logo resta in chiusura.'},
-      audaci:[
-        {titolo:'Annuncio stampato solo in parte, il resto online', meccanismo:'Continuità carta-digitale', perche:'Genera curiosità e porta il lettore da un mezzo all\'altro in modo elegante.', rischio:'Richiede un buon QR o call to action discreta, poco invasiva.', novita:74},
-        {titolo:'Pagina profumata a tiratura limitata', meccanismo:'Coinvolgimento sensoriale', perche:'Il lusso vive di esperienza fisica, raro nella pubblicità editoriale oggi.', rischio:'Costi di produzione elevati, da riservare a numeri speciali.', novita:88}
-      ]
-    },
-    food:{
-      label:'food & beverage',
-      testate:[
-        {nome:'La Cucina Italiana', formato:'Ricetta sponsorizzata (native)', quota:22},
-        {nome:'Corriere della Sera', formato:'Inserto Cucina, weekend', quota:16},
-        {nome:'Gambero Rosso (online)', formato:'Native + video', quota:16},
-        {nome:'La Repubblica', formato:'Banner sezione Sapori', quota:12},
-        {nome:'Dissapore', formato:'Native', quota:12},
-        {nome:'Il Resto del Carlino', formato:'Mezza pagina, edizione locale', quota:11},
-        {nome:'Quotidiano di Puglia', formato:'Banner, edizione locale', quota:11}
-      ],
-      consigliSuMisura:[
-        'Sfrutta la provenienza e la ricetta/lavorazione come contenuto editoriale naturale nel food, non come forzatura pubblicitaria.',
-        'Punta su un legame con un territorio specifico: è un aggancio credibile che i grandi marchi industriali faticano a replicare.',
-        'Racconta la filiera o il lavoro dietro il prodotto invece della sola ricetta/lifestyle — è un angolo meno presidiato dai competitor.',
-        'Valuta la stampa locale nelle zone di produzione/vendita: spesso trascurata a favore delle testate food nazionali più costose, ma più mirata.'
-      ],
-      sicura:{titolo:'Ricetta firmata con il prodotto protagonista', meccanismo:'Utilità pratica come veicolo del brand', perche:'Il lettore riceve valore reale, il brand entra senza forzature.'},
-      audaci:[
-        {titolo:'Annuncio a forma di scontrino della spesa', meccanismo:'Presa in prestito di un oggetto quotidiano', perche:'Riconoscibile all\'istante, gioca con la routine del lettore.', rischio:'Va testato che resti leggibile a piccola scala.', novita:71},
-        {titolo:'Pagina con macchia di caffè stampata ad arte', meccanismo:'Ironia sul contesto di lettura', perche:'Il giornale del mattino e il caffè sono già associati, l\'annuncio lo rende esplicito.', rischio:'Rischia di sembrare un difetto di stampa se non è ben chiarito.', novita:80}
-      ]
-    },
-    tech:{
-      label:'tecnologia',
-      testate:[
-        {nome:'Il Sole 24 Ore', formato:'Sezione Tecnologia, mezza pagina', quota:20},
-        {nome:'Wired Italia (online)', formato:'Native + banner', quota:18},
-        {nome:'La Repubblica', formato:'Banner sezione Economia', quota:14},
-        {nome:'HDblog', formato:'Banner', quota:13},
-        {nome:'DDay.it', formato:'Native', quota:12},
-        {nome:'Hardware Upgrade', formato:'Native', quota:12},
-        {nome:'Punto Informatico', formato:'Banner', quota:11}
-      ],
-      consigliSuMisura:[
-        'Mostra dati e specifiche del prodotto/servizio invece di slogan: il pubblico tech valuta competenza più dell\'estetica.',
-        'Gioca la carta dell\'agilità e del supporto diretto rispetto a un grande player tech, non solo come "sei più piccolo".',
-        'I grandi brand tech comunicano soprattutto su prodotto/prezzo: uno spazio scoperto è assistenza, formazione o supporto post-vendita.',
-        'Le testate verticali tech (blog specializzati) restano spesso meno presidiate dai grandi player rispetto alla stampa generalista.'
-      ],
-      sicura:{titolo:'Caso studio con dati di adozione reali', meccanismo:'Prova sociale quantificata', perche:'Il pubblico tech valuta credibilità e numeri più dell\'estetica.'},
-      audaci:[
-        {titolo:'Annuncio che si aggiorna via QR nel tempo', meccanismo:'Contenuto dinamico su mezzo statico', perche:'La stessa pagina cambia messaggio nell\'arco della campagna.', rischio:'Serve manutenzione tecnica costante del contenuto digitale collegato.', novita:82},
-        {titolo:'Layout in stile terminale di comando', meccanismo:'Vernacolo di settore come estetica', perche:'Parla la lingua visiva degli addetti ai lavori, distintivo tra le pagine patinate.', rischio:'Può risultare ostico a un pubblico non tecnico.', novita:69}
-      ]
-    },
-    finanza:{
-      label:'finanza e assicurazioni',
-      testate:[
-        {nome:'Il Sole 24 Ore', formato:'Pagina intera, sezione Finanza', quota:26},
-        {nome:'MF Milano Finanza', formato:'Mezza pagina', quota:20},
-        {nome:'Corriere della Sera', formato:'Inserto Economia', quota:15},
-        {nome:'Italia Oggi', formato:'Banner + native', quota:15},
-        {nome:'La Repubblica Affari&Finanza', formato:'Banner + native', quota:12},
-        {nome:'Il Quotidiano del Sud', formato:'Native, sezione Economia locale', quota:12}
-      ],
-      consigliSuMisura:[
-        'Costruisci il messaggio su chiarezza e sobrietà: nel settore finanziario la fiducia si guadagna così, più che con un\'estetica elaborata.',
-        'Se hai un focus di nicchia (un target o un bisogno specifico), è più credibile su testate locali/settoriali che su una pagina finanza generalista.',
-        'La comunicazione finanziaria si concentra quasi sempre su Il Sole 24 Ore e poche testate economiche: la stampa economica locale resta spesso libera.',
-        'Considera un angolo di educazione finanziaria/spiegazione invece che solo promozionale — è meno battuto e costruisce fiducia.'
-      ],
-      sicura:{titolo:'Grafico esplicativo con dato macro rilevante', meccanismo:'Autorevolezza tramite dato', perche:'Il settore finanziario premia sobrietà e precisione numerica.'},
-      audaci:[
-        {titolo:'Annuncio accanto ai listini, stesso stile tipografico', meccanismo:'Mimetismo editoriale dichiarato', perche:'Si integra visivamente nella pagina che il lettore già consulta ogni giorno.', rischio:'Deve essere etichettato con chiarezza come contenuto pubblicitario.', novita:66},
-        {titolo:'Serie di micro-annunci in sequenza su più giorni', meccanismo:'Narrazione seriale', perche:'Costruisce curiosità progressiva invece di un messaggio unico.', rischio:'Richiede pianificazione editoriale su più uscite consecutive.', novita:73}
-      ]
-    },
-    retail:{
-      label:'retail',
-      testate:[
-        {nome:'Corriere della Sera', formato:'Volantino inserto', quota:15},
-        {nome:'Il Resto del Carlino', formato:'Mezza pagina, edizione locale', quota:15},
-        {nome:'La Nazione', formato:'Native, edizione locale', quota:14},
-        {nome:'Gazzetta del Sud', formato:'Banner geolocalizzato', quota:14},
-        {nome:'Corriere Adriatico', formato:'Native, edizione locale', quota:14},
-        {nome:'Quotidiano di Puglia', formato:'Banner geolocalizzato', quota:14},
-        {nome:'La Nuova Sardegna', formato:'Mezza pagina, edizione locale', quota:14}
-      ],
-      consigliSuMisura:[
-        'Fai della presenza fisica e della conoscenza diretta del cliente locale il centro del messaggio — è un vantaggio che le grandi catene non hanno.',
-        'Preferisci la stampa locale, dove il pubblico è già quello del punto vendita, a una campagna generalista su un grande quotidiano.',
-        'La grande distribuzione comunica soprattutto su prezzo/offerta: un angolo di consulenza o servizio personale resta spesso scoperto.',
-        'Valuta il digitale geolocalizzato delle testate locali online: spesso più economico della pagina di carta e altrettanto mirato.'
-      ],
-      sicura:{titolo:'Pagina promozionale con offerta a tempo', meccanismo:'Urgenza classica', perche:'Formato collaudato che il pubblico retail riconosce e comprende subito.'},
-      audaci:[
-        {titolo:'Annuncio con coupon ritagliabile reale', meccanismo:'Oggetto fisico dentro il giornale', perche:'Riporta un gesto quasi dimenticato che genera raccolta attiva del ritaglio.', rischio:'Serve verificare la fustellatura con la tipografia della testata.', novita:70},
-        {titolo:'Mappa del negozio stampata sulla pagina', meccanismo:'Utilità spaziale', perche:'Guida fisicamente il cliente, utile per punti vendita nuovi o poco noti.', rischio:'Funziona solo per campagne con forte componente locale.', novita:64}
-      ]
-    },
-    altro:{
-      label:'il tuo settore',
-      testate:[
-        {nome:'Corriere della Sera', formato:'Mezza pagina, sezione pertinente', quota:18},
-        {nome:'La Repubblica', formato:'Native + banner', quota:16},
-        {nome:'Panorama', formato:'Native, sezione pertinente', quota:14},
-        {nome:'La Stampa', formato:'Banner', quota:13},
-        {nome:'Il Resto del Carlino', formato:'Mezza pagina, edizione locale', quota:13},
-        {nome:'Il Fatto Quotidiano', formato:'Banner + native', quota:13},
-        {nome:'Corriere Adriatico', formato:'Banner geolocalizzato', quota:13}
-      ],
-      consigliSuMisura:[
-        'Senza altri dati, punta sulla specificità: cosa fai tu che un concorrente generico non fa altrettanto bene.',
-        'Se hai una presenza locale o di nicchia, è spesso più credibile su testate mirate che su una grande testata generalista.',
-        'Le grandi aziende del settore tendono a concentrarsi sulle stesse poche testate nazionali: quelle locali e i settimanali restano spesso meno presidiati.',
-        'Indica un competitor specifico (nome o sito) e un prodotto/zona nel wizard per un\'analisi molto più mirata su dove non sono ancora presenti.'
-      ],
-      sicura:{titolo:'Annuncio istituzionale con messaggio chiaro', meccanismo:'Chiarezza sopra tutto', perche:'Senza dati di settore specifici, la scelta più sicura è un messaggio diretto e ben leggibile.'},
-      audaci:[
-        {titolo:'Formato ibrido carta-digitale con QR narrativo', meccanismo:'Continuità tra i due mezzi', perche:'Adattabile a molti settori, crea un ponte tra lettura fisica e approfondimento online.', rischio:'L\'efficacia dipende dalla qualità dell\'esperienza digitale collegata.', novita:72},
-        {titolo:'Sequenza di annunci che raccontano una storia', meccanismo:'Narrazione seriale', perche:'Costruisce attesa nel lettore abituale della testata.', rischio:'Richiede coordinamento su più uscite e budget dedicato.', novita:68}
-      ]
-    }
+    automotive: { label:'automotive' },
+    moda: { label:'moda e lusso' },
+    food: { label:'food & beverage' },
+    tech: { label:'tecnologia' },
+    finanza: { label:'finanza e assicurazioni' },
+    retail: { label:'retail' },
+    altro: { label:'il tuo settore' }
   };
 
   // Backend online su Render. Per testare in locale invece, usa
   // 'http://localhost:8000' con `uvicorn api:app --reload --port 8000`.
   const API_BASE_URL = 'https://taglio-api.onrender.com';
 
-  async function fetchAllocation(mockTestate, sectorKey){
+  // Non mostra più dati simulati quando il backend non risponde: se la
+  // fonte reale non è raggiungibile lo dice apertamente (disponibile:false),
+  // invece di far comparire testate/prezzi inventati (vedi audit del 9/9,
+  // punto 2 — "eliminazione completa del fallback mock").
+  async function fetchAllocation(sectorKey){
     try{
       const res = await fetch(API_BASE_URL + '/api/allocation?settore=' + encodeURIComponent(sectorKey));
       if(!res.ok) throw new Error('status ' + res.status);
       const json = await res.json();
-      if(!Array.isArray(json) || json.length === 0) throw new Error('risposta vuota, nessuno scan ancora eseguito');
-      const normalized = json.map(t => ({
+      if(!Array.isArray(json)) throw new Error('risposta inattesa');
+      const tutte = json.map(t => ({
         nome: t.nome, formato: t.formato, quota: t.quota,
         formatoCategoria: t.formato_categoria || null,
         campagna: t.campagna_probabile || null,
         posizionamento: t.posizionamento_consigliato || null,
-        contattoUrl: t.contatto_pubblicitario_url || null
+        contattoUrl: t.contatto_pubblicitario_url || null,
+        ultimaOsservazione: t.ultima_osservazione || null,
+        // Di default "osservato" solo se ha davvero una quota numerica:
+        // così anche se il backend non manda "stato" esplicitamente, una
+        // riga senza segnali reali non finisce trattata come osservata.
+        stato: t.stato || (typeof t.quota === 'number' ? 'osservato' : 'dati_non_disponibili')
       }));
-      return { testate: normalized, isFallback:false };
+      const osservate = tutte.filter(t => t.stato === 'osservato');
+      const nonDisponibili = tutte.filter(t => t.stato !== 'osservato').map(t => t.nome);
+      return { disponibile: true, osservate, nonDisponibili };
     } catch(err){
-      console.warn('Backend allocazione non raggiungibile, uso dati mock:', err);
-      return { testate: mockTestate, isFallback:true };
+      console.warn('Backend allocazione non raggiungibile:', err);
+      return { disponibile: false, osservate: [], nonDisponibili: [] };
     }
   }
 
@@ -1433,6 +1334,23 @@
     const totaleRilevanza = selected.reduce((s, t)=> s + t.rilevanza, 0) || 1;
     selected.forEach(t=>{ t.quota = Math.round(100 * t.rilevanza / totaleRilevanza * 10) / 10; });
 
+    // Affinità e motivazione: CALCOLATE da Taglio a partire dai punteggi già
+    // pronti sopra, non generate dall'AI (una chiamata AI per testata
+    // costerebbe inutilmente di più — vedi istruzioni del 9/9, "COSTI").
+    const puntggiOrdinati = [...selected].sort((a, b)=> b.punteggio - a.punteggio);
+    selected.forEach(t=>{
+      const posizione = puntggiOrdinati.indexOf(t);
+      const frazione = selected.length > 1 ? posizione / (selected.length - 1) : 0;
+      t.affinita = frazione <= 0.33 ? 'Alta' : (frazione <= 0.66 ? 'Media' : 'Bassa');
+
+      const motivi = ['ha segnali pubblicitari osservati direttamente'];
+      if(t.zonaMatch) motivi.unshift('è la testata del territorio indicato');
+      const frazioneBudget = t.costMid / budget;
+      if(frazioneBudget <= 0.35) motivi.push('costo compatibile con il budget indicato senza assorbirne una quota eccessiva');
+      else motivi.push('richiede una parte consistente del budget indicato');
+      t.motivazione = motivi.join('; ') + '.';
+    });
+
     return selected;
   }
 
@@ -1524,6 +1442,12 @@
     downloadMockup(key, key);
   });
 
+  // Payload dell'ultima analisi tentata: serve al pulsante "Riprova analisi
+  // AI" per rifare SOLO la chiamata AI (riusando i siti già letti), senza
+  // consumare una nuova ricerca gratuita e senza rileggere gli stessi siti.
+  let ultimoPayloadAnalisi = null;
+  let ultimoContestoRisultati = null; // { sectorLabel, name, alloc, zonaGeografica }
+
   async function runAnalysis(){
     const puoProcedere = await consumaRicercaSeConsentito();
     if(!puoProcedere) return;
@@ -1573,92 +1497,99 @@
       ...competitorUrls.map(fetchSiteSummary)
     ]);
 
-    const ideasPromise = sitiPromise.then(([sitoAzienda, ...sitiCompetitor]) =>
-      generateIdeasWithAI({
+    let erroreAI = null;
+    const ideasPromise = sitiPromise.then(([sitoAzienda, ...sitiCompetitor]) => {
+      ultimoPayloadAnalisi = {
         name, website, sectorLabel: mockData.label, tone: state.tone,
         competitors: state.competitors, budget: state.budget, obiettivo: state.obiettivo,
         prodotto, zonaGeografica, targetCliente,
         sitoAzienda, sitiCompetitor: sitiCompetitor.filter(Boolean)
-      })
-    ).catch(err=>{
-      console.error('Generazione AI non riuscita, uso fallback mock:', err);
-      return {
-        idea_sicura: mockData.sicura, idee_audaci: mockData.audaci,
-        analisi_azienda: '', consigli_su_misura: mockData.consigliSuMisura,
-        sitoLettoDavvero: false, isFallback:true
       };
+      return generateIdeasWithAI(ultimoPayloadAnalisi);
+    }).catch(err=>{
+      // Niente più fallback mock qui: un errore AI resta un errore, mostrato
+      // come tale, non travestito da risultato (vedi audit del 9/9, punto 2).
+      console.error('Generazione AI non riuscita:', err);
+      erroreAI = err.message || 'Errore imprevisto';
+      return null;
     });
 
-    const allocPromise = fetchAllocation(mockData.testate, sectorKey);
+    const allocPromise = fetchAllocation(sectorKey);
 
     const [, ideas, alloc] = await Promise.all([animation, ideasPromise, allocPromise]);
     fill.style.width = '100%';
-    setTimeout(()=>showResults(mockData.label, name, ideas, alloc, zonaGeografica), 300);
+    setTimeout(()=>{
+      ultimoContestoRisultati = { sectorLabel: mockData.label, name, alloc, zonaGeografica };
+      renderRisultatiBase(mockData.label, name, alloc, zonaGeografica);
+      renderRisultatiAI(ideas, erroreAI, name);
+    }, 300);
   }
 
+  // Rifà solo la chiamata AI (i siti restano quelli già letti in
+  // ultimoPayloadAnalisi) senza toccare consumaRicercaSeConsentito: la
+  // ricerca è già stata autorizzata quando l'utente ha lanciato l'analisi.
+  async function retryAnalisiAI(){
+    if(!ultimoPayloadAnalisi || !ultimoContestoRisultati) return;
+    const btn = document.getElementById('retryAiBtn');
+    const errEl = document.getElementById('aiRetryError');
+    if(errEl) errEl.hidden = true;
+    if(btn){ btn.disabled = true; btn.textContent = 'Un attimo…'; }
+    let ideas = null, erroreAI = null;
+    try{
+      ideas = await generateIdeasWithAI(ultimoPayloadAnalisi);
+    } catch(err){
+      console.error('Retry analisi AI non riuscito:', err);
+      erroreAI = err.message || 'Errore imprevisto';
+    }
+    if(btn){ btn.disabled = false; btn.textContent = 'Riprova analisi AI'; }
+    renderRisultatiAI(ideas, erroreAI, ultimoContestoRisultati.name);
+  }
+  document.getElementById('retryAiBtn').addEventListener('click', retryAnalisiAI);
+
+  // La chiamata ad Anthropic gira ORA solo sul backend (/api/generate-
+  // analysis) — il browser non contatta più api.anthropic.com direttamente.
+  // Prima lo faceva senza nessuna chiave, funzionando solo dentro l'ambiente
+  // artifact di Claude.ai: sul sito pubblico falliva sempre (vedi audit del
+  // 9/9/2026). Il sito qui sotto riusa il contenuto già letto da
+  // fetchSiteSummary() — non rilegge gli stessi siti una seconda volta.
   async function generateIdeasWithAI(payload){
-    const sitoAziendaBlock = payload.sitoAzienda
-      ? `\nContenuto reale letto dal sito dell'azienda (titolo: "${payload.sitoAzienda.title}"):\n"""${payload.sitoAzienda.testo.slice(0, 3000)}"""\n`
-      : '';
-    const sitiCompetitorBlock = (payload.sitiCompetitor && payload.sitiCompetitor.length)
-      ? '\n' + payload.sitiCompetitor.map((s, i) => `Contenuto reale letto dal sito del competitor ${i+1} (titolo: "${s.title}"):\n"""${s.testo.slice(0, 1800)}"""`).join('\n\n') + '\n'
-      : '';
-    const haSitoReale = !!(payload.sitoAzienda || (payload.sitiCompetitor && payload.sitiCompetitor.length));
-
-    const prompt = `Sei un consulente di marketing che aiuta una PMI a fare pubblicità su giornali e riviste italiane (carta e digitale editoriale), con un occhio di riguardo per aziende con budget limitato — non dare per scontato che possano permettersi i grandi quotidiani nazionali.
-
-Dati azienda:
-Nome: ${payload.name}
-Sito web: ${payload.website || 'non indicato'}
-Prodotto o servizio specifico: ${payload.prodotto || 'non indicato, ragiona sul settore in generale'}
-Zona geografica: ${payload.zonaGeografica || 'non indicata, presumi rilevanza nazionale'}
-Target di clientela: ${payload.targetCliente || 'non indicato'}
-Settore: ${payload.sectorLabel}
-Tono di marca: ${payload.tone || 'non specificato'}
-Competitor noti: ${payload.competitors.length ? payload.competitors.join(', ') : 'nessuno indicato, usa benchmark di settore'}
-Budget indicativo: € ${payload.budget}
-Obiettivo campagna: ${payload.obiettivo}
-${sitoAziendaBlock}${sitiCompetitorBlock}
-${haSitoReale
-  ? 'Hai contenuto REALE letto da almeno un sito (azienda e/o competitor) qui sopra: usalo come base primaria del ragionamento. Prima leggilo per capire davvero cosa fa l\'azienda (servizi/prodotti specifici, punti che enfatizza, tono, eventuali prezzi o garanzie citati) e, se presente, cosa enfatizzano i competitor. Ogni consiglio deve poter essere ricondotto a qualcosa di concreto letto nel testo, non a supposizioni generiche sul settore — se citi un dettaglio, che sia uno vero preso dal testo fornito.'
-  : 'Non hai contenuto reale di nessun sito (non indicato, non raggiungibile, o generato via JavaScript e quindi illeggibile): dillo esplicitamente nell\'analisi invece di far finta di sapere cose che non sai, e costruisci i consigli sul prodotto/servizio, zona e target indicati più i pattern tipici del settore — restando espliciti che sono ipotesi, non fatti verificati su questa azienda specifica.'}
-
-Genera:
-- "analisi_azienda": 2-3 frasi su cosa fa davvero questa azienda secondo quello che hai letto (o, se non hai contenuto reale, una frase che lo dichiara apertamente e riassume solo l'ipotesi di lavoro basata su settore/prodotto/zona)
-- "consigli_su_misura": 4-5 consigli CONCRETI e specifici per la campagna pubblicitaria — non punti di forza astratti, ma indicazioni operative tipo "punta su X perché Y" — ciascuno deve collegarsi esplicitamente a un dato specifico (prodotto, zona, target, o qualcosa di realmente letto sul sito azienda/competitor), non genericità valide per qualsiasi azienda del settore
-- una "idea_sicura": basata su pattern collaudati del settore, basso rischio
-- due "idee_audaci": meccanismi creativi presi in prestito da ALTRI settori, applicati in modo pertinente a questo brand, per stupire il mercato senza risultare fuori contesto
-
-Tutte le idee devono essere realizzabili su carta stampata o adv editoriale digitale (niente tecnologie non disponibili su questi formati).
-
-Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo formato esatto:
-{"analisi_azienda":"...","consigli_su_misura":["...","...","...","..."],"idea_sicura":{"titolo":"...","meccanismo":"...","perche":"..."},"idee_audaci":[{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0},{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}]}
-
-"novita" è un numero da 0 a 100 che stimi tu, quanto l'idea si discosta dai pattern standard del settore. Scrivi tutti i testi in italiano.`;
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const response = await fetch(API_BASE_URL + '/api/generate-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1800,
-        messages: [{ role: "user", content: prompt }]
+        name: payload.name,
+        website: payload.website,
+        prodotto: payload.prodotto,
+        zonaGeografica: payload.zonaGeografica,
+        targetCliente: payload.targetCliente,
+        sectorLabel: payload.sectorLabel,
+        tone: payload.tone,
+        competitors: payload.competitors,
+        budget: payload.budget,
+        obiettivo: payload.obiettivo,
+        sitoAzienda: payload.sitoAzienda || null,
+        sitiCompetitor: payload.sitiCompetitor || []
       })
     });
-    if(!response.ok) throw new Error('Errore API: ' + response.status);
-    const data = await response.json();
-    const text = data.content.map(b => b.text || '').join('');
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+    if(!response.ok){
+      let dettaglio = '';
+      try{ dettaglio = (await response.json()).detail || ''; } catch(e){}
+      throw new Error(dettaglio || ('Errore backend: ' + response.status));
+    }
+    const parsed = await response.json();
     if(!parsed.idea_sicura || !Array.isArray(parsed.idee_audaci)) throw new Error('Formato risposta inatteso');
-    // analisi_azienda/consigli_su_misura sono un arricchimento: se il modello
-    // non li produce (risposta più vecchia o parziale) non buttiamo via il resto.
     if(!Array.isArray(parsed.consigli_su_misura)) parsed.consigli_su_misura = [];
-    parsed.sitoLettoDavvero = haSitoReale;
+    parsed.sitoLettoDavvero = !!parsed.sito_letto_davvero;
     return parsed;
   }
 
-  function showResults(sectorLabel, name, ideas, alloc, zonaGeografica){
+  const TIPO_CONSIGLIO_LABEL = {
+    FACT: 'Rilevato sul sito',
+    INFERENCE: 'Ipotesi Taglio',
+    SUGGESTION: 'Suggerimento AI'
+  };
+
+  function renderRisultatiBase(sectorLabel, name, alloc, zonaGeografica){
     document.getElementById('loadingView').style.display = 'none';
     document.getElementById('resultsView').style.display = 'block';
 
@@ -1667,27 +1598,23 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
       ? `Basato sull'analisi di ${state.competitors.length} competitor e sui pattern del settore ${sectorLabel}, con budget di € ${state.budget.toLocaleString('it-IT')}.`
       : `Nessun competitor indicato: piano basato sui benchmark del settore ${sectorLabel}, con budget di € ${state.budget.toLocaleString('it-IT')}.`;
 
-    const consigli = ideas.consigli_su_misura || [];
-    const strategyBlock = document.getElementById('strategyBlock');
-    if(consigli.length){
-      strategyBlock.style.display = '';
-      document.getElementById('strategyCaption').textContent = ideas.sitoLettoDavvero
-        ? 'Basati sul contenuto reale letto dal sito indicato (azienda e/o competitor), non solo su ipotesi di settore.'
-        : 'Nessun sito analizzabile: ipotesi di lavoro dedotte da settore, prodotto, zona e target indicati — da validare, non fatti verificati.';
-      const analisiEl = document.getElementById('analisiAziendaText');
-      analisiEl.textContent = ideas.analisi_azienda || '';
-      analisiEl.style.display = ideas.analisi_azienda ? '' : 'none';
-      document.getElementById('consigliList').innerHTML = consigli.map(c => `<li>${c}</li>`).join('');
-    } else {
-      strategyBlock.style.display = 'none';
-    }
+    const datasetLineEl = document.getElementById('datasetStatusLine');
+    if(datasetLineEl) datasetLineEl.textContent = formattaRigaDatasetStatus();
 
     const allocList = document.getElementById('allocList');
     allocList.innerHTML = '';
+    const noteEl = document.getElementById('demoNote');
+
+    if(!alloc.disponibile){
+      allocList.innerHTML = '<p class="price-disclaimer">Dati sulle testate non disponibili in questo momento: il backend di rilevazione non risponde. Riprova più tardi.</p>';
+      noteEl.textContent = 'Nota: allocazione non disponibile perché i dati sulle testate non sono raggiungibili in questo momento.';
+      return;
+    }
+
     const periodoKey = document.getElementById('period').value;
     let totMinSum = 0, totMaxSum = 0;
 
-    const piano = buildAllocationPlan(alloc.testate, state.budget, periodoKey, zonaGeografica);
+    const piano = buildAllocationPlan(alloc.osservate, state.budget, periodoKey, zonaGeografica);
 
     piano.forEach(t=>{
       const est = t.est;
@@ -1702,7 +1629,15 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
         : '';
 
       const posizionamentoLine = t.posizionamento
-        ? `Posizionamento consigliato: ${t.posizionamento.zona} — meno inserzionisti rilevati lì (${t.posizionamento.inserzionisti_rilevati_qui}) rispetto al resto della pagina`
+        ? `Posizionamento osservato: ${t.posizionamento.zona} — meno inserzionisti rilevati lì (${t.posizionamento.inserzionisti_rilevati_qui}) rispetto al resto della pagina`
+        : 'Posizionamento osservato: dato non disponibile';
+
+      const ultimaRilevazioneLine = t.ultimaOsservazione
+        ? `Ultima rilevazione: ${new Date(t.ultimaOsservazione).toLocaleDateString('it-IT')}`
+        : 'Ultima rilevazione: dato non disponibile';
+
+      const affinitaLine = t.affinita
+        ? `Affinità con la tua attività: <strong>${t.affinita}</strong>`
         : '';
 
       // Contatto commerciale: preferisci il link trovato davvero dallo
@@ -1720,14 +1655,17 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
       row.innerHTML = `
         <div>
           <div class="alloc-name">${t.nome}</div>
-          <div class="alloc-format">${t.formato}</div>
+          <div class="alloc-format">${t.formato ? 'Formato osservato: ' + t.formato : 'Formato osservato: dato non disponibile'}</div>
           ${campagnaBadge}
           ${zonaBadge}
         </div>
         <div class="alloc-track"><div class="alloc-fill" style="width:${t.quota}%"></div></div>
         <div class="alloc-pct">${t.quota}%</div>
-        <div class="alloc-price">Stima: ${formatEuro(est.totMin)} – ${formatEuro(est.totMax)} per il periodo (${formatEuro(est.perUscitaMin)}–${formatEuro(est.perUscitaMax)} ${est.unit})</div>
-        ${posizionamentoLine ? `<div class="alloc-posizionamento">${posizionamentoLine}</div>` : ''}
+        <div class="alloc-price" title="Stima Taglio — non è un listino ufficiale della testata.">Costo indicativo stimato: ${formatEuro(est.totMin)} – ${formatEuro(est.totMax)} per il periodo (${formatEuro(est.perUscitaMin)}–${formatEuro(est.perUscitaMax)} ${est.unit}) · Stima Taglio, non listino ufficiale</div>
+        <div class="alloc-posizionamento">${posizionamentoLine}</div>
+        <div class="alloc-posizionamento">${ultimaRilevazioneLine}</div>
+        ${affinitaLine ? `<div class="alloc-posizionamento">${affinitaLine}</div>` : ''}
+        ${t.motivazione ? `<div class="alloc-posizionamento">Perché te la consigliamo: ${t.motivazione}</div>` : ''}
         ${contattoLine ? `<div class="alloc-contatto-row">${contattoLine}</div>` : ''}
       `;
       allocList.appendChild(row);
@@ -1737,7 +1675,7 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
     summaryEl.className = 'price-summary';
     const overBudget = totMinSum > state.budget;
     summaryEl.innerHTML = `
-      <span>Totale stimato per il piano</span>
+      <span>Totale indicativo stimato per il piano</span>
       <strong>${formatEuro(totMinSum)} – ${formatEuro(totMaxSum)}</strong>
     `;
     allocList.prepend(summaryEl);
@@ -1746,8 +1684,58 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
     priceDisclaimer.className = 'price-disclaimer';
     priceDisclaimer.textContent = overBudget
       ? `Attenzione: la stima minima supera il budget indicato di € ${state.budget.toLocaleString('it-IT')}. Valuta di ridurre il numero di testate o le uscite.`
-      : 'Stime indicative da benchmark di mercato pubblici, non tariffe ufficiali — verifica sempre con la concessionaria prima di allocare il budget.';
+      : 'Stima Taglio — non è un listino ufficiale della testata. Verifica sempre con la concessionaria prima di allocare il budget.';
     allocList.appendChild(priceDisclaimer);
+
+    if(alloc.nonDisponibili && alloc.nonDisponibili.length){
+      const nonDispEl = document.createElement('div');
+      nonDispEl.className = 'price-disclaimer';
+      nonDispEl.style.marginTop = '14px';
+      nonDispEl.innerHTML = `<strong>Altre testate monitorate, dati non ancora disponibili:</strong> ${alloc.nonDisponibili.map(escapeXml).join(', ')}.`;
+      allocList.appendChild(nonDispEl);
+    }
+
+    noteEl.textContent = 'Nota: l\'allocazione per testata arriva dai dati rilevati dallo scraping; le testate senza rilevazioni sono elencate separatamente, senza dati inventati.';
+  }
+
+  function renderRisultatiAI(ideas, erroreAI, name){
+    const unavailablePanel = document.getElementById('aiUnavailablePanel');
+    const strategyBlock = document.getElementById('strategyBlock');
+    const ideeBlock = document.getElementById('ideeBlock');
+
+    if(!ideas){
+      unavailablePanel.style.display = '';
+      strategyBlock.style.display = 'none';
+      ideeBlock.style.display = 'none';
+      const errEl = document.getElementById('aiRetryError');
+      if(errEl){
+        if(erroreAI){ errEl.textContent = erroreAI; errEl.hidden = false; }
+        else { errEl.hidden = true; }
+      }
+      return;
+    }
+
+    unavailablePanel.style.display = 'none';
+    ideeBlock.style.display = '';
+
+    const consigli = ideas.consigli_su_misura || [];
+    if(consigli.length){
+      strategyBlock.style.display = '';
+      document.getElementById('strategyCaption').textContent = ideas.sitoLettoDavvero
+        ? 'Basati sul contenuto reale letto dal sito indicato (azienda e/o competitor), non solo su ipotesi di settore.'
+        : 'Nessun sito analizzabile: ipotesi di lavoro dedotte da settore, prodotto, zona e target indicati — da validare, non fatti verificati.';
+      const analisiEl = document.getElementById('analisiAziendaText');
+      analisiEl.textContent = ideas.analisi_azienda || '';
+      analisiEl.style.display = ideas.analisi_azienda ? '' : 'none';
+      document.getElementById('consigliList').innerHTML = consigli.map(c=>{
+        const testo = (typeof c === 'string') ? c : (c.testo || '');
+        const tipo = (typeof c === 'object' && c.tipo) ? c.tipo : 'INFERENCE';
+        const label = TIPO_CONSIGLIO_LABEL[tipo] || TIPO_CONSIGLIO_LABEL.INFERENCE;
+        return `<li>${escapeXml(testo)} <span class="alloc-caption" style="display:inline;">(${label})</span></li>`;
+      }).join('');
+    } else {
+      strategyBlock.style.display = 'none';
+    }
 
     const sic = ideas.idea_sicura;
     document.getElementById('ideaSicura').innerHTML = `
@@ -1783,15 +1771,6 @@ Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo f
       audContainer.appendChild(card);
       renderMockup(card, a, name, '#C2006B', 'aud' + i);
     });
-
-    const noteEl = document.querySelector('.demo-note');
-    const ideeNote = ideas.isFallback
-      ? 'le idee creative mostrate sono di esempio (motore AI non raggiunto in questo test)'
-      : 'le idee creative sono generate ora in tempo reale dal motore AI';
-    const allocNote = alloc.isFallback
-      ? 'l\'allocazione per testata è simulata (backend scraping non raggiunto o senza ancora dati)'
-      : 'l\'allocazione per testata arriva dai dati reali raccolti dallo scraping';
-    noteEl.textContent = `Nota: ${ideeNote}; ${allocNote}.`;
   }
 </script>
 

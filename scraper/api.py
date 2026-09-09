@@ -9,7 +9,9 @@ l'abbonamento a pagamento (Stripe) e lo stato "abbonato" degli utenti
 session per far pagare l'utente, e Stripe notifica il pagamento riuscito a
 /api/stripe-webhook, che aggiorna il profilo su Supabase. /api/fetch-site-
 summary legge davvero il sito dell'azienda o di un competitor indicato nel
-wizard, per dare all'AI un contesto reale invece di solo nome/URL.
+wizard. /api/generate-analysis chiama Anthropic da qui (mai dal browser) per
+produrre analisi e consigli veri sul prodotto pubblico — vedi la sezione
+dedicata più sotto.
 
 Uso:
     uvicorn api:app --reload --port 8000
@@ -28,6 +30,13 @@ locale a meno di testare i pagamenti — vedi README):
 Finché STRIPE_SECRET_KEY manca, /api/create-checkout-session risponde con un
 errore chiaro invece di rompersi — l'app resta usabile, solo l'abbonamento
 non è ancora attivabile.
+
+Variabile d'ambiente per l'AI (da impostare su Render):
+    ANTHROPIC_API_KEY       chiave segreta Anthropic — SOLO qui, mai nel
+                             frontend, mai committata, mai loggata. Finché
+                             manca, /api/generate-analysis risponde 503 con
+                             un messaggio chiaro invece di rompersi.
+    ANTHROPIC_MODEL         opzionale, default "claude-sonnet-5"
 """
 
 import ipaddress
@@ -35,15 +44,18 @@ import json
 import os
 import re
 import socket
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
 import stripe
+import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from taxonomy import categorie_rilevanti
 
@@ -59,6 +71,8 @@ app.add_middleware(
 )
 
 AGGREGATED_FILE = Path("aggregated.json")
+DATASET_META_FILE = Path("dataset_meta.json")
+CONFIG_FILE = Path("config.yaml")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://oxuirmbgbwnegnqxfdjx.supabase.co")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -66,26 +80,106 @@ STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 SITE_URL = os.environ.get("SITE_URL", "https://appandsite.github.io/Taglio/")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 
 
+def _load_testate_config() -> dict:
+    """{nome_testata: [categorie]} da config.yaml. Dizionario vuoto se il
+    file manca, così l'endpoint degrada invece di rompersi."""
+    if not CONFIG_FILE.exists():
+        return {}
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+    return {t["name"]: t.get("categorie", ["generalista"]) for t in config.get("testate", [])}
+
+
 @app.get("/api/allocation")
 def get_allocation(settore: Optional[str] = None):
-    if not AGGREGATED_FILE.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="aggregated.json non trovato. Esegui prima scraper.py e poi aggregator.py.",
-        )
-    with open(AGGREGATED_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    """Ritorna TUTTE le testate configurate rilevanti per il settore, non
+    solo quelle con dati raccolti: una testata monitorata ma senza
+    rilevazioni compare comunque, con stato "dati_non_disponibili" e ogni
+    campo osservato a null — mai un formato/posizionamento/contatto
+    inventato per riempire il vuoto (vedi audit del 9/9)."""
+    testate_config = _load_testate_config()
+    if not testate_config:
+        raise HTTPException(status_code=500, detail="config.yaml non trovato o vuoto sul server.")
 
-    if settore:
-        allowed = categorie_rilevanti(settore)
-        data = [d for d in data if set(d.get("categorie", ["generalista"])) & allowed]
+    aggregated_by_nome = {}
+    if AGGREGATED_FILE.exists():
+        with open(AGGREGATED_FILE, "r", encoding="utf-8") as f:
+            for row in json.load(f):
+                aggregated_by_nome[row["nome"]] = row
 
-    return data
+    allowed = categorie_rilevanti(settore) if settore else None
+
+    risultati = []
+    for nome, categorie in testate_config.items():
+        if allowed and not (set(categorie) & allowed):
+            continue
+        if nome in aggregated_by_nome:
+            row = dict(aggregated_by_nome[nome])
+            row["stato"] = "osservato"
+        else:
+            row = {
+                "nome": nome,
+                "categorie": categorie,
+                "stato": "dati_non_disponibili",
+                "formato": None,
+                "formato_categoria": None,
+                "quota": None,
+                "segnali_osservati": 0,
+                "domini_ad_distinti": [],
+                "prima_osservazione": None,
+                "ultima_osservazione": None,
+                "giorni_scansionati": 0,
+                "campagna_probabile": None,
+                "posizionamento_consigliato": None,
+                "contatto_pubblicitario_url": None,
+            }
+        risultati.append(row)
+
+    return risultati
+
+
+@app.get("/api/dataset-status")
+def dataset_status():
+    """Numeri reali sul dataset corrente, per mostrare in UI frasi come
+    "67 testate monitorate, 40 con rilevazioni, ultimo aggiornamento ..."
+    senza mai hardcodare un conteggio nel frontend (vedi audit del 9/9,
+    punto 9 — la vecchia frase "62 testate" non veniva mai ricalcolata)."""
+    testate_config = _load_testate_config()
+    testate_configurate = len(testate_config)
+
+    testate_con_dati = 0
+    ultimo_aggiornamento = None
+    if AGGREGATED_FILE.exists():
+        with open(AGGREGATED_FILE, "r", encoding="utf-8") as f:
+            aggregated = json.load(f)
+        testate_con_dati = len(aggregated)
+        date_osservate = [r.get("ultima_osservazione") for r in aggregated if r.get("ultima_osservazione")]
+        if date_osservate:
+            ultimo_aggiornamento = max(date_osservate)
+
+    meta = {}
+    if DATASET_META_FILE.exists():
+        with open(DATASET_META_FILE, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        # Il file di metadati (prodotto dalla scansione automatica, vedi
+        # scraper/validate_dataset.py) è la fonte più precisa per la data,
+        # se disponibile: copre anche il caso di uno scan con 0 testate
+        # valide, che altrimenti lascerebbe ultimo_aggiornamento a None.
+        ultimo_aggiornamento = meta.get("ultimo_aggiornamento", ultimo_aggiornamento)
+
+    return {
+        "testate_configurate": testate_configurate,
+        "testate_con_dati": testate_con_dati,
+        "ultimo_aggiornamento": ultimo_aggiornamento,
+        "ultima_scansione_automatica": meta or None,
+    }
 
 
 @app.get("/api/health")
@@ -320,3 +414,223 @@ def fetch_site_summary(url: str):
         }
 
     return {"ok": True, "title": title, "testo": text[:6000]}
+
+
+# ---------------------------------------------------------------------------
+# Analisi AI — chiamata ad Anthropic SOLO da qui, mai dal browser.
+#
+# Prima di questo endpoint, site/taglio-demo.html chiamava
+# https://api.anthropic.com/v1/messages direttamente dal client, senza
+# nessuna chiave (funzionava solo dentro l'ambiente artifact di Claude.ai,
+# che intercetta la richiesta e la autentica lui). Sul sito pubblico quella
+# chiamata falliva sempre — vedi audit del 9/9/2026. Ora il browser chiama
+# solo /api/generate-analysis; la chiave Anthropic vive solo in questo
+# processo, letta da ANTHROPIC_API_KEY, mai scritta in un file del repo, mai
+# rimandata al client, mai loggata.
+# ---------------------------------------------------------------------------
+
+MAX_SITE_TEXT_CHARS = 3000
+MAX_COMPETITOR_TEXT_CHARS = 1800
+MAX_COMPETITORS_IN_PROMPT = 5
+
+# Limite in memoria, non distribuito: si azzera a ogni riavvio del processo.
+# Non è un controllo di sicurezza, è un freno contro un loop lato client che
+# altrimenti moltiplicherebbe il costo delle chiamate Anthropic — coerente
+# con un prodotto a 4,99€/mese (vedi "COSTI" nelle istruzioni del 9/9).
+_RATE_LIMIT_WINDOW_SEC = 3600
+_RATE_LIMIT_MAX_REQUESTS = 10
+_rate_limit_hits: dict = defaultdict(deque)
+
+
+def _check_rate_limit(client_key: str) -> bool:
+    now = time.monotonic()
+    hits = _rate_limit_hits[client_key]
+    while hits and now - hits[0] > _RATE_LIMIT_WINDOW_SEC:
+        hits.popleft()
+    if len(hits) >= _RATE_LIMIT_MAX_REQUESTS:
+        return False
+    hits.append(now)
+    return True
+
+
+class SiteSummaryIn(BaseModel):
+    title: str = ""
+    testo: str = ""
+
+
+class GenerateAnalysisRequest(BaseModel):
+    # Limiti di lunghezza sui campi liberi del wizard: non sono un controllo
+    # di sicurezza in senso stretto (i dati arrivano dall'utente stesso, non
+    # da terzi), ma evitano che un payload anomalo gonfi inutilmente il
+    # prompt/costo della chiamata Anthropic (vedi istruzioni del 9/9, "limiti
+    # di dimensione dell'input").
+    model_config = ConfigDict(populate_by_name=True)
+    name: str = Field("la tua azienda", max_length=200)
+    website: str = Field("", max_length=500)
+    prodotto: str = Field("", max_length=500)
+    zona_geografica: str = Field("", alias="zonaGeografica", max_length=200)
+    target_cliente: str = Field("", alias="targetCliente", max_length=500)
+    sector_label: str = Field("il tuo settore", alias="sectorLabel", max_length=100)
+    tone: str = Field("", max_length=100)
+    competitors: list[str] = Field(default_factory=list, max_length=10)
+    budget: int = Field(0, ge=0, le=10_000_000)
+    obiettivo: str = Field("", max_length=100)
+    # Riusa il contenuto già letto dal frontend via /api/fetch-site-summary:
+    # non rileggiamo lo stesso sito una seconda volta da qui (vedi istruzioni
+    # del 9/9, "non effettuare una seconda lettura inutile").
+    sito_azienda: Optional[SiteSummaryIn] = Field(None, alias="sitoAzienda")
+    siti_competitor: list[SiteSummaryIn] = Field(default_factory=list, alias="sitiCompetitor", max_length=10)
+
+
+def _truncate(s: str, n: int) -> str:
+    return (s or "")[:n]
+
+
+def _build_analysis_prompt(payload: GenerateAnalysisRequest) -> tuple[str, bool]:
+    sito_block = ""
+    if payload.sito_azienda and payload.sito_azienda.testo:
+        sito_block = (
+            f"\nContenuto reale letto dal sito dell'azienda (titolo: \"{payload.sito_azienda.title}\"):\n"
+            f"\"\"\"{_truncate(payload.sito_azienda.testo, MAX_SITE_TEXT_CHARS)}\"\"\"\n"
+        )
+
+    competitor_testi = [c for c in payload.siti_competitor if c.testo][:MAX_COMPETITORS_IN_PROMPT]
+    competitor_block = ""
+    if competitor_testi:
+        parti = [
+            f"Contenuto reale letto dal sito del competitor {i + 1} (titolo: \"{c.title}\"):\n"
+            f"\"\"\"{_truncate(c.testo, MAX_COMPETITOR_TEXT_CHARS)}\"\"\""
+            for i, c in enumerate(competitor_testi)
+        ]
+        competitor_block = "\n" + "\n\n".join(parti) + "\n"
+
+    ha_sito_reale = bool(sito_block or competitor_block)
+
+    if ha_sito_reale:
+        istruzioni_fonte = (
+            "Hai contenuto REALE letto da almeno un sito (azienda e/o competitor) qui sopra: usalo come "
+            "base primaria del ragionamento. Ogni consiglio che deriva da qualcosa scritto davvero su quel "
+            "sito va etichettato \"FACT\". Un consiglio dedotto ragionevolmente ma non scritto esplicitamente "
+            "va etichettato \"INFERENCE\". Una proposta strategica/creativa tua va etichettata \"SUGGESTION\"."
+        )
+    else:
+        istruzioni_fonte = (
+            "Non hai contenuto reale di nessun sito (non indicato, non raggiungibile, o generato via "
+            "JavaScript e quindi illeggibile): dichiaralo nell'analisi invece di far finta di sapere cose "
+            "che non sai. In questo caso ogni consiglio è per forza \"INFERENCE\" (dedotto da settore/"
+            "prodotto/zona/target) o \"SUGGESTION\" — non puoi avere nessun \"FACT\" senza un sito letto davvero."
+        )
+
+    prompt = f"""Sei un consulente di marketing che aiuta una PMI a fare pubblicità su giornali e riviste italiane (carta e digitale editoriale), con un occhio di riguardo per aziende con budget limitato.
+
+Dati azienda:
+Nome: {payload.name}
+Sito web: {payload.website or 'non indicato'}
+Prodotto o servizio specifico: {payload.prodotto or 'non indicato, ragiona sul settore in generale'}
+Zona geografica: {payload.zona_geografica or 'non indicata, presumi rilevanza nazionale'}
+Target di clientela: {payload.target_cliente or 'non indicato'}
+Settore: {payload.sector_label}
+Tono di marca: {payload.tone or 'non specificato'}
+Competitor noti: {', '.join(payload.competitors) if payload.competitors else 'nessuno indicato, usa benchmark di settore'}
+Budget indicativo: € {payload.budget}
+Obiettivo campagna: {payload.obiettivo or 'non indicato'}
+{sito_block}{competitor_block}
+{istruzioni_fonte}
+
+REGOLA FONDAMENTALE: non inventare mai clienti, recensioni, fatturato, audience, diffusione, CPM, prezzi ufficiali, certificazioni, partnership, risultati di campagne, o dati demografici che non hai. Se qualcosa non è rilevabile dai dati disponibili, scrivi esplicitamente "non rilevato dal sito" o "non determinabile con i dati disponibili" invece di inventarlo.
+
+Genera:
+- "analisi_azienda": 2-3 frasi su cosa fa davvero questa azienda secondo quello che hai letto (o, se non hai contenuto reale, una frase che lo dichiara apertamente)
+- "consigli_su_misura": 4-5 consigli CONCRETI per la campagna pubblicitaria, ciascuno un oggetto {{"testo":"...","tipo":"FACT|INFERENCE|SUGGESTION"}} secondo la regola sopra — non genericità valide per qualsiasi azienda del settore
+- una "idea_sicura": basata su pattern collaudati del settore, basso rischio
+- due "idee_audaci": meccanismi creativi presi in prestito da ALTRI settori, applicati in modo pertinente a questo brand
+
+Tutte le idee devono essere realizzabili su carta stampata o adv editoriale digitale (niente tecnologie non disponibili su questi formati).
+
+Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo formato esatto:
+{{"analisi_azienda":"...","consigli_su_misura":[{{"testo":"...","tipo":"FACT"}},{{"testo":"...","tipo":"INFERENCE"}}],"idea_sicura":{{"titolo":"...","meccanismo":"...","perche":"..."}},"idee_audaci":[{{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}},{{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}}]}}
+
+"novita" è un numero da 0 a 100. Scrivi tutti i testi in italiano."""
+
+    return prompt, ha_sito_reale
+
+
+@app.post("/api/generate-analysis")
+def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Analisi AI non ancora configurata (manca la chiave Anthropic sul server).",
+        )
+
+    client_key = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_key):
+        raise HTTPException(status_code=429, detail="Troppe richieste di analisi in poco tempo. Riprova tra qualche minuto.")
+
+    prompt, ha_sito_reale = _build_analysis_prompt(payload)
+
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": ANTHROPIC_MODEL,
+                "max_tokens": 2500,
+                # Il "thinking" esteso di alcuni modelli Claude consuma parte
+                # del budget di max_tokens PRIMA di produrre il testo vero e
+                # proprio: su un prompt come questo può da solo esaurire
+                # max_tokens, troncando la risposta a zero testo (osservato
+                # in test locale il 9/9/2026). Qui serve solo il JSON finale,
+                # non un ragionamento visibile, quindi lo disabilitiamo:
+                # risposta più affidabile e più economica.
+                "thinking": {"type": "disabled"},
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=45,
+        )
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="Il motore AI non ha risposto in tempo. Riprova.")
+    except requests.exceptions.RequestException:
+        raise HTTPException(status_code=502, detail="Impossibile contattare il motore AI. Riprova più tardi.")
+
+    if resp.status_code != 200:
+        # Mai esporre il corpo grezzo della risposta di Anthropic al client:
+        # solo un messaggio generico, i dettagli restano nei log del server.
+        raise HTTPException(status_code=502, detail="Il motore AI ha risposto con un errore. Riprova più tardi.")
+
+    try:
+        data = resp.json()
+        text = "".join(block.get("text", "") for block in data.get("content", []))
+        clean = re.sub(r"```json|```", "", text).strip()
+        parsed = json.loads(clean)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Risposta AI in un formato inatteso. Riprova.")
+
+    if not isinstance(parsed.get("idea_sicura"), dict) or not isinstance(parsed.get("idee_audaci"), list):
+        raise HTTPException(status_code=502, detail="Risposta AI incompleta. Riprova.")
+
+    consigli_raw = parsed.get("consigli_su_misura")
+    if not isinstance(consigli_raw, list):
+        consigli_raw = []
+    # Normalizza: se il modello risponde con semplici stringhe invece che
+    # {testo, tipo}, non buttiamo via la risposta — etichetta di default
+    # INFERENCE (mai "FACT" per qualcosa di cui non conosciamo la provenienza).
+    consigli = []
+    for c in consigli_raw:
+        if isinstance(c, dict) and "testo" in c:
+            tipo = c.get("tipo") if c.get("tipo") in ("FACT", "INFERENCE", "SUGGESTION") else "INFERENCE"
+            consigli.append({"testo": c["testo"], "tipo": tipo})
+        elif isinstance(c, str):
+            consigli.append({"testo": c, "tipo": "INFERENCE"})
+
+    return {
+        "analisi_azienda": parsed.get("analisi_azienda", ""),
+        "consigli_su_misura": consigli,
+        "idea_sicura": parsed["idea_sicura"],
+        "idee_audaci": parsed["idee_audaci"],
+        "sito_letto_davvero": ha_sito_reale,
+    }

@@ -3,6 +3,10 @@ venv/
 __pycache__/
 *.pyc
 
-# Scan grezzi: file di lavoro locali, non servono al deploy (solo
-# aggregated.json, già aggregato, va committato)
-scraper/out/
+# Gli scan grezzi (scraper/out/) ORA sono committati apposta: servono allo
+# storico usato da aggregator.py per calcolare le "campagne in corso" nel
+# tempo, e danno un rollback naturale via git history se una scansione
+# automatica produce dati anomali (vedi .github/workflows/scrape-weekly.yml
+# e scraper/validate_dataset.py, istruzioni del 9/9/2026 punto 3).
+# Resta ignorato solo il file candidato temporaneo prima della validazione.
+scraper/aggregated.new.json

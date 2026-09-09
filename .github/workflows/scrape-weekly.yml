@@ -1,0 +1,74 @@
+name: Scansione settimanale testate
+
+# Sostituisce il flusso manuale (scraper.py + aggregator.py lanciati a mano
+# da un computer) con un aggiornamento automatico, a bassa frequenza per
+# restare rispettosi verso i siti scansionati — una volta a settimana, non
+# di più (vedi istruzioni del 9/9/2026, punto 3). Nessun bypass di
+# protezioni anti-bot: se un sito blocca lo scraping, quella testata risulta
+# semplicemente "non raggiunta" in questo run, non si insiste.
+on:
+  schedule:
+    # Lunedì alle 04:10 UTC — orario a bassa concorrenza, lontano dagli
+    # aggiornamenti editoriali del mattino delle testate stesse.
+    - cron: "10 4 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: scraper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installa dipendenze Python
+        run: pip install -r requirements.txt
+
+      - name: Installa Chromium per Playwright
+        run: python -m playwright install --with-deps chromium
+
+      - name: Scansiona tutte le testate configurate
+        run: python scraper.py --config config.yaml --output out --concurrency 4
+
+      - name: Aggrega i risultati in un dataset candidato
+        run: python aggregator.py --input out --output aggregated.new.json --config config.yaml
+
+      - name: Valida il dataset prima di pubblicarlo
+        id: validate
+        continue-on-error: true
+        run: python validate_dataset.py --previous aggregated.json --candidate aggregated.new.json --run-summary-dir out --promote-to aggregated.json --meta-output dataset_meta.json
+
+      - name: Rimuovi eventuale candidato scartato
+        if: always()
+        run: rm -f aggregated.new.json
+
+      - name: Commit e push (dataset se pubblicato, storico scan e metadati sempre)
+        if: always()
+        run: |
+          git config user.name "taglio-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add out/ aggregated.json dataset_meta.json
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica da salvare."
+          else
+            ESITO="pubblicato"
+            if [ "${{ steps.validate.outcome }}" != "success" ]; then
+              ESITO="scartato (dataset precedente confermato)"
+            fi
+            git commit -m "Scansione automatica settimanale: dataset $ESITO ($(date -u +%Y-%m-%d))"
+            git push
+          fi
+
+      - name: Segnala se il dataset è stato scartato
+        if: steps.validate.outcome != 'success'
+        run: |
+          echo "::warning::La scansione automatica non ha superato la validazione: il dataset pubblicato resta quello precedente. Vedi dataset_meta.json per i motivi."

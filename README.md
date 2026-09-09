@@ -43,30 +43,50 @@ taglio-project/
 │                                ogni modifica a site/taglio-demo.html vanno
 │                                copiati anche qui, altrimenti la versione
 │                                pubblica su GitHub Pages resta indietro.
+├── .github/workflows/
+│   └── scrape-weekly.yml     → scansione automatica settimanale (GitHub
+│                                Actions): scraper → aggregator → validazione
+│                                → commit solo se il dataset è sano
 └── scraper/
     ├── scraper.py             → visita le testate e rileva gli ad slot attivi
     ├── taxonomy.py            → mappa settore azienda -> categorie di testate
     ├── config.yaml            → elenco testate (67), ciascuna con categorie
     ├── aggregator.py          → riassume gli scan grezzi per testata
+    ├── validate_dataset.py    → confronta il nuovo aggregated.json con quello
+    │                            pubblicato prima di sostituirlo: rifiuta
+    │                            scansioni fallite o anomale, scrive
+    │                            dataset_meta.json con l'esito
+    ├── out/                   → scan grezzi (`scan_*.json`, `run_summary_*.json`),
+    │                            committati per lo storico usato da aggregator.py
     ├── api.py                 → backend FastAPI: dati al sito, checkout e
     │                            webhook Stripe, lettura reale di siti
-    │                            azienda/competitor per l'AI
+    │                            azienda/competitor, e proxy server-side verso
+    │                            Anthropic per l'analisi AI (mai chiamata dal
+    │                            browser, mai la chiave lato client)
     ├── requirements.txt       → dipendenze scraper + API (uso locale)
     ├── requirements-api.txt   → solo dipendenze API, per il deploy online
     └── Procfile               → comando di avvio, alternativa a render.yaml
                                   (es. per Railway, che non legge render.yaml)
 ```
 
-**Flusso dati**: `scraper.py` produce JSON grezzi → `aggregator.py` li
-riassume in `aggregated.json`, allegando le categorie di ogni testata da
-`config.yaml` → `api.py` li serve via `/api/allocation?settore=...` →
-`site/taglio-demo.html` li mostra nella dashboard, con fallback automatico
-a dati simulati se il backend non è raggiungibile.
+**Flusso dati testate**: `scraper.py` gira una volta a settimana via GitHub
+Actions (o a mano quando serve) e produce JSON grezzi in `out/` →
+`aggregator.py` li riassume in un dataset candidato → `validate_dataset.py`
+lo confronta con quello attualmente pubblicato e lo promuove ad
+`aggregated.json` solo se non è anomalo (altrimenti resta pubblicato quello
+precedente, e l'esito del tentativo va comunque in `dataset_meta.json`) →
+`api.py` li serve via `/api/allocation?settore=...` e `/api/dataset-status`
+→ `site/taglio-demo.html` li mostra nella dashboard. **Nessun fallback a
+dati inventati**: se il backend non risponde, il sito lo dice apertamente
+invece di mostrare testate o prezzi simulati.
 
-Le idee creative sono generate in tempo reale chiamando l'API di Claude
-direttamente dal frontend (funziona quando il sito gira come artifact
-dentro Claude.ai; fuori da lì, o se la chiamata fallisce, scatta il
-fallback a idee di esempio).
+**Flusso AI**: il frontend legge il sito reale di azienda/competitor
+(`/api/fetch-site-summary`), poi manda quel contenuto — non un fetch
+duplicato — a `/api/generate-analysis` sul backend, che è l'unico a
+contattare l'API Anthropic (chiave letta da variabile d'ambiente, mai nel
+frontend, mai nel repo). Se Anthropic non risponde o restituisce un errore,
+il sito mostra un messaggio chiaro con un pulsante "Riprova analisi AI" —
+mai idee generate localmente per riempire il vuoto.
 
 ## Avviare tutto in locale
 
@@ -76,34 +96,57 @@ python -m venv venv && source venv/bin/activate    # Windows: venv\Scripts\activ
 pip install -r requirements.txt
 playwright install chromium
 
-# 1. Scansiona le testate (filtrabile per settore)
+# 1. Scansiona le testate (filtrabile per settore, o tutte per il dataset "vero")
 python scraper.py --config config.yaml --output out/ --settore automotive
 
-# 2. Aggrega i risultati
+# 2. Aggrega i risultati (in locale puoi scrivere direttamente su aggregated.json;
+#    il flusso automatico invece passa da aggregated.new.json + validate_dataset.py,
+#    vedi sotto)
 python aggregator.py --input out/ --output aggregated.json --config config.yaml
 
-# 3. Avvia il backend
+# 3. Imposta la chiave Anthropic (serve solo lato server, mai nel frontend)
+export ANTHROPIC_API_KEY=sk-ant-...        # Windows: $env:ANTHROPIC_API_KEY="sk-ant-..."
+
+# 4. Avvia il backend
 uvicorn api:app --reload --port 8000
 ```
 
-Poi apri `site/taglio-demo.html` in Claude.ai come artifact (per il motore
-idee AI) o direttamente nel browser (userai solo i dati di allocazione dal
-backend locale, con fallback mock per le idee).
+Poi apri `site/taglio-demo.html` direttamente nel browser, puntando
+`API_BASE_URL` al backend locale (`http://localhost:8000`). Sia
+l'allocazione testate sia l'analisi AI passano dal backend: senza
+`ANTHROPIC_API_KEY` impostata, `/api/generate-analysis` risponde 503 con un
+messaggio chiaro invece di restituire idee inventate.
+
+**Per riprodurre in locale la scansione automatica** (scraper → aggregator
+→ validazione, come nel workflow settimanale):
+
+```bash
+python scraper.py --config config.yaml --output out
+python aggregator.py --input out --output aggregated.new.json --config config.yaml
+python validate_dataset.py --previous aggregated.json --candidate aggregated.new.json \
+  --run-summary-dir out --promote-to aggregated.json --meta-output dataset_meta.json
+```
+
+`validate_dataset.py` esce con codice 0 e sostituisce `aggregated.json`
+solo se il nuovo dataset non è vuoto e non è crollato in modo anomalo
+rispetto al precedente; altrimenti esce con codice 1 e lascia il dataset
+esistente intatto, scrivendo comunque l'esito in `dataset_meta.json`.
 
 ## Stato del progetto — cosa è reale e cosa è ancora simulato
 
 | Pezzo | Stato |
 |---|---|
 | Wizard onboarding, UI, dashboard | Funzionante |
-| Generazione idee creative | Reale (via API Claude), con fallback mock |
-| Scraping ad slot | Reale, testato dall'utente su 62 testate |
+| Generazione idee creative | Reale, via backend (`/api/generate-analysis` → Anthropic). Nessun fallback mock: se fallisce, il sito lo dice e offre "Riprova analisi AI" |
+| Scraping ad slot | Reale, 67 testate configurate; il numero con dati effettivi lo dà `/api/dataset-status`, mai una cifra fissa nel codice |
+| Aggiornamento del dataset | Automatico, settimanale, via GitHub Actions (`.github/workflows/scrape-weekly.yml`), con validazione anti-anomalia prima di pubblicare — vedi sotto |
 | Filtro testate per settore | Reale, collegato scraper → aggregator → API |
-| Allocazione budget per testata | Reale — backend sempre online; fallback mock solo se Render è giù |
-| Stima prezzi | Modello indicativo da benchmark pubblici, non tariffe ufficiali |
+| Allocazione budget per testata | Reale — solo testate con dati osservati entrano nel piano; quelle senza rilevazioni sono elencate a parte, mai con dati inventati |
+| Stima prezzi | Sempre etichettata "Costo indicativo stimato" + "Stima Taglio — non è un listino ufficiale della testata", mai spacciata per tariffa reale |
 | Mockup grafico idee | Generato client-side (SVG), layout di riferimento non asset finale |
-| Backend online (non-localhost) | Fatto — https://taglio-api.onrender.com, dati reali (67 testate tracciate) |
+| Backend online (non-localhost) | Fatto — https://taglio-api.onrender.com |
 | Gestione cookie banner nello scraper | Fatto |
-| Storico nel tempo (durata campagne) | Fatto |
+| Storico nel tempo (durata campagne) | Fatto — gli scan grezzi in `scraper/out/` sono ora committati per mantenere lo storico tra un run automatico e l'altro |
 | Piano tarato sul budget (non sempre i grandi nazionali) | Fatto |
 | Suggerimento posizionamento per testata online | Fatto, ma è densità di inserzionisti per zona pagina, non identificazione di competitor specifici — vedi nota legale/limiti sotto |
 | Login/registrazione utenti | Fatto (Supabase Auth) |
@@ -114,7 +157,7 @@ backend locale, con fallback mock per le idee).
 | Boost testate locali in base alla zona indicata | Fatto (mappa regioni → testate in `site/taglio-demo.html`) |
 | Copertura settimanali nello scraper | Ampliata: +TV Sorrisi e Canzoni, Vero, Diva e Donna, Confidenze, Autosprint |
 | Contatto pubblicitario per testata (link, non telefono/mail indovinati) | Fatto se lo scraper trova un link "Pubblicità" sul sito; altrimenti link diretto al sito reale della testata |
-| Consigli su misura + analisi azienda | Reale (via API Claude), basati sul contenuto letto dal sito quando disponibile — fallback mock per settore altrimenti |
+| Consigli su misura + analisi azienda | Reale, via backend; ogni consiglio è etichettato Rilevato sul sito / Ipotesi Taglio / Suggerimento AI a seconda della provenienza — mai fatti inventati (nomi di clienti, fatturato, audience, ecc.) |
 
 ## Prossimi passi naturali, in ordine di impatto
 
@@ -136,9 +179,17 @@ backend locale, con fallback mock per le idee).
    localhost. `render.yaml` sta nella root del repo con `rootDir: scraper`:
    Render cerca il blueprint solo in root, non nelle sottocartelle, quindi
    il file va tenuto lì anche in futuro.
-   - **Mantenere aggiornati i dati**: rifai scan + aggregate in locale
-     (vedi sopra), poi `git add scraper/aggregated.json && git commit &&
-     git push` — l'auto-deploy di Render riparte da solo al push.
+   - **Mantenere aggiornati i dati**: automatico da quando esiste
+     `.github/workflows/scrape-weekly.yml` (scansione ogni lunedì mattina,
+     più eventuale lancio manuale da GitHub → Actions → "Scansione
+     settimanale testate" → Run workflow). Il workflow scansiona, aggrega,
+     valida e fa il commit da solo (`aggregated.json`, `dataset_meta.json`,
+     gli scan grezzi in `out/`) solo se il nuovo dataset supera i controlli
+     anti-anomalia in `validate_dataset.py`; altrimenti lascia pubblicato
+     quello precedente e registra il tentativo fallito in
+     `dataset_meta.json`. L'auto-deploy di Render riparte da solo al push
+     sul commit del dataset. Per un aggiornamento manuale immediato, vedi
+     "Avviare tutto in locale" sopra.
    - **Piano free e "sonno"**: dopo un periodo di inattività Render mette in
      pausa il servizio; la prima richiesta successiva impiega 30-50 secondi
      a risvegliarlo (normale, non un bug). Se diventa un problema, il piano
@@ -186,12 +237,12 @@ backend locale, con fallback mock per le idee).
      Zone → Change visibility** — il progetto non contiene chiavi o dati
      sensibili, è sicuro farlo.
    - URL risultante: `https://<utente>.github.io/<repo>/`.
-   - **Compromesso**: su GitHub Pages la generazione idee via AI (che
-     chiama l'API di Claude direttamente dal browser) non funziona — è
-     una capacità disponibile solo dentro l'ambiente artifact di
-     Claude.ai — quindi scatta sempre il fallback con le idee di esempio.
-     Budget, testate e contatti (dal backend Render) restano invece
-     pienamente reali e funzionanti.
+   - L'analisi AI funziona anche qui: dal 9/9/2026 il frontend non chiama
+     più direttamente l'API Anthropic (che su GitHub Pages falliva sempre,
+     perché quella chiamata richiedeva l'ambiente artifact di Claude.ai),
+     ma passa dal backend (`/api/generate-analysis`), che è l'unico a
+     avere la chiave. Su GitHub Pages come su qualunque altro dominio,
+     l'AI è quindi pienamente reale, non un fallback.
    - Ricorda: `docs/index.html` è una copia di `site/taglio-demo.html`,
      va aggiornata a mano dopo ogni modifica al sito (vedi sopra).
 8. **Accesso e abbonamento**: login obbligatorio, 1 ricerca gratuita per
@@ -281,6 +332,40 @@ a buon fine il webhook sblocca l'utente su Supabase.
 
 **Consiglio**: testa tutto prima con le chiavi Stripe in **modalità test**
 (carte di prova, nessun addebito reale) prima di passare alle chiavi live.
+
+## Analisi AI (Anthropic)
+
+**Stato**: `/api/generate-analysis` gira solo sul backend — il browser non
+contatta mai `api.anthropic.com` direttamente. Serve una chiave Anthropic
+sul server (Render → servizio `taglio-api` → **Environment**):
+
+| Variabile | Valore |
+|---|---|
+| `ANTHROPIC_API_KEY` | dalla [console Anthropic](https://console.anthropic.com/), sezione API Keys |
+| `ANTHROPIC_MODEL` | opzionale, default `claude-sonnet-5` |
+
+Senza `ANTHROPIC_API_KEY` impostata, l'endpoint risponde 503 con
+`"Analisi AI non ancora configurata"` invece di generare contenuti finti —
+il resto del sito (login, allocazione testate, prezzi) continua a
+funzionare normalmente.
+
+**Sicurezza**: la chiave non è mai nel repo, nel frontend o nei log (solo
+letta da variabile d'ambiente); l'endpoint ha un rate limit per IP
+(10 richieste/ora, pensato per un abbonamento a 4,99€/mese, non per un uso
+massivo), un timeout sulla chiamata ad Anthropic, e non inoltra mai il
+corpo grezzo di un errore Anthropic al client. Il testo del sito
+azienda/competitor già letto da `/api/fetch-site-summary` viene riusato
+così com'è nel prompt (troncato a ~3000/1800 caratteri): niente doppia
+fetch, niente chiamata AI per singola testata.
+
+**Regola sui contenuti generati**: il prompt istruisce esplicitamente il
+modello a distinguere FATTO (trovato davvero nel sito), IPOTESI (deduzione
+ragionevole) e SUGGERIMENTO (proposta creativa), e a non inventare mai
+clienti, recensioni, fatturato, audience, diffusione, CPM, prezzi
+ufficiali, certificazioni, partnership, risultati di campagne o dati
+demografici non disponibili. Il sito mostra l'etichetta corrispondente
+(Rilevato sul sito / Ipotesi Taglio / Suggerimento AI) accanto a ogni
+consiglio.
 
 ## Limiti da conoscere: identificazione dei competitor
 

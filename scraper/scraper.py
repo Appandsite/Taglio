@@ -379,6 +379,8 @@ async def run(config_path: str, output_dir: str, delay_seconds: float, headless:
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     all_observations: list[AdSlotObservation] = []
+    testate_con_errore: list[str] = []
+    testate_con_segnali: list[str] = []
     semaphore = asyncio.Semaphore(concurrency)
 
     async with async_playwright() as p:
@@ -393,8 +395,11 @@ async def run(config_path: str, output_dir: str, delay_seconds: float, headless:
                     # Un errore imprevisto su una singola testata non deve far perdere
                     # i risultati già raccolti dalle altre in questo stesso batch.
                     print(f"  [errore] {testata['name']}: fallita ({e})")
+                    testate_con_errore.append(testata["name"])
                     return []
                 print(f"  {testata['name']}: trovati {len(obs)} segnali pubblicitari")
+                if obs:
+                    testate_con_segnali.append(testata["name"])
                 return obs
 
         tasks = [worker(i, t) for i, t in enumerate(testate)]
@@ -408,6 +413,22 @@ async def run(config_path: str, output_dir: str, delay_seconds: float, headless:
     output_file = Path(output_dir) / f"scan_{timestamp}.json"
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump([asdict(o) for o in all_observations], f, ensure_ascii=False, indent=2)
+
+    # Riepilogo di questa scansione (tentate/raggiunte/errori): usato dal
+    # validatore per decidere se questo run è abbastanza sano da pubblicare
+    # il nuovo aggregated.json al posto di quello precedente (vedi
+    # validate_dataset.py e istruzioni del 9/9, punto 3).
+    summary_file = Path(output_dir) / f"run_summary_{timestamp}.json"
+    summary = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "settore_filtro": settore,
+        "testate_configurate": len(testate),
+        "testate_tentate": len(testate),
+        "testate_con_segnali": sorted(testate_con_segnali),
+        "testate_con_errore": sorted(testate_con_errore),
+    }
+    with open(summary_file, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
 
     print(f"\nFatto. {len(all_observations)} osservazioni da {len(testate)} testate salvate in {output_file}")
 
