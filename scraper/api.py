@@ -41,6 +41,7 @@ Variabile d'ambiente per l'AI (da impostare su Render):
 
 import ipaddress
 import json
+import logging
 import os
 import re
 import socket
@@ -57,7 +58,150 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
+logger = logging.getLogger("taglio")
+
 from taxonomy import categorie_rilevanti
+
+# ---------------------------------------------------------------------------
+# Geo-classificazione testate del catalogo (Lombardia ecc.) — stessa tabella
+# già validata lato frontend (site/taglio-demo.html, GEO_TESTATA) l'8-9/9/2026
+# per il fix del ranking geografico. Portata qui in Python perché ora anche
+# il backend deve calcolare geo_fit per le testate di catalogo, in modo
+# uniforme con i media scoperti via web search (istruzioni del 9/9/2026,
+# "Taglio 3.0").
+# ---------------------------------------------------------------------------
+GEO_TESTATA = [
+    {"regione": "Lombardia", "keywords": ["milano", "lombardia", "bergamo", "brescia", "monza", "como", "pavia", "cremona", "mantova", "varese", "lecco", "lodi", "sondrio"],
+     "testate": [("il giorno", "REGION"), ("eco di bergamo", "LOCAL")]},
+    {"regione": "Friuli-Venezia Giulia", "keywords": ["trieste", "friuli", "venezia giulia", "fvg", "udine", "pordenone", "gorizia"],
+     "testate": [("il piccolo", "REGION")]},
+    {"regione": "Sardegna", "keywords": ["sardegna", "cagliari", "sassari", "nuoro", "oristano"],
+     "testate": [("nuova sardegna", "REGION"), ("unione sarda", "REGION")]},
+    {"regione": "Sicilia", "keywords": ["sicilia", "palermo", "catania", "messina", "siracusa", "trapani", "ragusa", "agrigento", "caltanissetta", "enna"],
+     "testate": [("giornale di sicilia", "REGION"), ("quotidiano di sicilia", "REGION")]},
+    {"regione": "Calabria", "keywords": ["calabria", "reggio calabria", "catanzaro", "cosenza", "crotone", "vibo valentia"],
+     "testate": [("gazzetta del sud", "REGION")]},
+    {"regione": "Puglia", "keywords": ["puglia", "bari", "foggia", "lecce", "taranto", "brindisi", "barletta"],
+     "testate": [("gazzetta del mezzogiorno", "REGION"), ("quotidiano di puglia", "REGION")]},
+    {"regione": "Basilicata", "keywords": ["basilicata", "potenza", "matera"],
+     "testate": [("quotidiano del sud", "REGION")]},
+    {"regione": "Toscana", "keywords": ["toscana", "firenze", "livorno", "pisa", "siena", "arezzo", "prato", "lucca", "grosseto"],
+     "testate": [("la nazione", "REGION"), ("tirreno", "REGION")]},
+    {"regione": "Emilia-Romagna", "keywords": ["emilia", "bologna", "romagna", "modena", "parma", "reggio emilia", "ferrara", "ravenna", "rimini", "piacenza"],
+     "testate": [("resto del carlino", "REGION")]},
+    {"regione": "Campania", "keywords": ["campania", "napoli", "salerno", "caserta", "avellino", "benevento"],
+     "testate": [("il mattino", "REGION")]},
+    {"regione": "Marche", "keywords": ["marche", "ancona", "pesaro", "macerata", "ascoli"],
+     "testate": [("corriere adriatico", "REGION")]},
+    {"regione": "Liguria", "keywords": ["liguria", "genova", "la spezia", "savona", "imperia"],
+     "testate": [("secolo xix", "REGION")]},
+    {"regione": "Lazio", "keywords": ["lazio", "roma", "latina", "frosinone", "viterbo", "rieti"],
+     "testate": [("il tempo", "REGION"), ("il messaggero", "REGION")]},
+]
+
+
+def _classifica_geo_testata_catalogo(nome: str) -> tuple[str, Optional[str]]:
+    """(scope, regione) per una testata del catalogo config.yaml. NATIONAL se
+    non è in nessun gruppo sopra (i grandi quotidiani/settimanali nazionali e
+    i verticali online restano sempre candidati, mai penalizzati per zona)."""
+    n = nome.lower()
+    for gruppo in GEO_TESTATA:
+        for match, scope in gruppo["testate"]:
+            if match in n:
+                return scope, gruppo["regione"]
+    return "NATIONAL", None
+
+
+def _regione_da_testo_catalogo(testo: Optional[str]) -> Optional[str]:
+    if not testo:
+        return None
+    t = testo.lower()
+    for gruppo in GEO_TESTATA:
+        if any(k in t for k in gruppo["keywords"]):
+            return gruppo["regione"]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Stima prezzi per le testate di CATALOGO (stessa tabella già in uso lato
+# frontend, site/taglio-demo.html — FORMATO_BASE/FASCIA_TESTATA). Portata qui
+# perché ora il TAGLIO_ESTIMATE va calcolato lato server per stare nello
+# stesso oggetto "media" dei risultati di discovery (istruzioni 9/9/2026,
+# "Taglio 3.0", gerarchia prezzi). Solo per testate di catalogo: un media
+# appena scoperto non ha una fascia nota, resta PRICE_ON_REQUEST/UNKNOWN.
+# ---------------------------------------------------------------------------
+FORMATO_BASE = {
+    "doppia pagina": (32000, 70000, "a uscita"),
+    "pagina intera": (18000, 42000, "a uscita"),
+    "mezza pagina": (9000, 22000, "a uscita"),
+    "banner": (900, 3200, "a settimana"),
+    "native": (3000, 9000, "a uscita/settimana"),
+    "default": (5000, 14000, "a uscita"),
+}
+PERIODO_USCITE = {"2settimane": 2, "1mese": 4, "3mesi": 12, "stagionale": 8}
+FASCIA_TESTATA = [
+    (["corriere della sera"], 1.2), (["repubblica"], 1.1), (["sole 24"], 1.15),
+    (["stampa"], 1.05), (["messaggero"], 0.9), (["fatto quotidiano"], 0.8),
+    (["il giornale"], 0.75), (["libero quotidiano"], 0.75), (["avvenire"], 0.7),
+    (["manifesto"], 0.6), (["domani"], 0.65), (["verità"], 0.65), (["il tempo"], 0.85),
+    (["resto del carlino", "la nazione", "il giorno", "secolo xix", "mattino",
+      "giornale di sicilia", "gazzetta del sud", "gazzetta del mezzogiorno",
+      "quotidiano del sud", "quotidiano di sicilia", "tirreno", "piccolo",
+      "nuova sardegna", "unione sarda", "eco di bergamo", "corriere adriatico",
+      "quotidiano di puglia"], 0.4),
+    (["milano finanza", "mf "], 0.85), (["italia oggi"], 0.6),
+    (["gazzetta dello sport"], 0.9), (["corriere dello sport", "tuttosport"], 0.75),
+    (["panorama", "espresso"], 0.55), (["internazionale", "focus"], 0.5),
+    (["famiglia cristiana"], 0.45), (["sorrisi"], 0.5), (["chi"], 0.5),
+    (["gente", "oggi"], 0.45), (["novella 2000"], 0.4), (["dipiù"], 0.35),
+    (["vero"], 0.4), (["diva e donna"], 0.4), (["vogue"], 1.3),
+    (["vanity fair"], 0.7), (["elle"], 0.7), (["grazia", "io donna", "gq italia"], 0.6),
+    (["donna moderna", "amica"], 0.55), (["confidenze"], 0.45), (["wired"], 0.6),
+    (["hdblog", "dday", "tom's hardware", "hardware upgrade"], 0.4),
+    (["punto informatico"], 0.35), (["quattroruote", "gambero rosso"], 0.6),
+    (["autosprint"], 0.55), (["cucina italiana"], 0.8), (["dissapore"], 0.4),
+]
+
+
+def _fascia_da_nome(nome: str) -> float:
+    n = nome.lower()
+    for keywords, fascia in FASCIA_TESTATA:
+        if any(k in n for k in keywords):
+            return fascia
+    return 0.5
+
+
+def _formato_key_da_stringa(formato: Optional[str]) -> str:
+    f = (formato or "").lower()
+    if "doppia pagina" in f:
+        return "doppia pagina"
+    if "pagina intera" in f:
+        return "pagina intera"
+    if "mezza pagina" in f:
+        return "mezza pagina"
+    if "banner" in f or "leaderboard" in f:
+        return "banner"
+    if "native" in f:
+        return "native"
+    return "default"
+
+
+def _stima_prezzo_catalogo(nome: str, formato: Optional[str], formato_categoria: Optional[str], periodo_key: str) -> dict:
+    """TAGLIO_ESTIMATE per una testata di catalogo con dati reali osservati.
+    Mai per un media appena scoperto (nessuna fascia nota per quello)."""
+    key = formato_categoria if formato_categoria in FORMATO_BASE else _formato_key_da_stringa(formato)
+    base_min, base_max, unit = FORMATO_BASE.get(key, FORMATO_BASE["default"])
+    fascia = _fascia_da_nome(nome)
+    uscite = PERIODO_USCITE.get(periodo_key, 4)
+    per_uscita_min = round(base_min * fascia / 500) * 500
+    per_uscita_max = round(base_max * fascia / 500) * 500
+    return {
+        "tier": "TAGLIO_ESTIMATE",
+        "min": per_uscita_min * uscite,
+        "max": per_uscita_max * uscite,
+        "unit": unit,
+        "fonte": "Stima Taglio — non è un listino ufficiale della testata.",
+    }
 
 app = FastAPI(title="Taglio API")
 
@@ -95,6 +239,18 @@ def _load_testate_config() -> dict:
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
     return {t["name"]: t.get("categorie", ["generalista"]) for t in config.get("testate", [])}
+
+
+def _load_testate_urls() -> dict:
+    """{nome_testata: dominio_canonico} — serve a far combaciare un media
+    scoperto dall'AI con una testata già nel catalogo (istruzioni 9/9/2026,
+    "Taglio 3.0": le 67 testate sono parte del catalogo, non un universo a
+    parte)."""
+    if not CONFIG_FILE.exists():
+        return {}
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+    return {t["name"]: _canonical_domain(t["url"]) for t in config.get("testate", []) if t.get("url")}
 
 
 @app.get("/api/allocation")
@@ -366,6 +522,201 @@ def _find_about_link(html: str, base_url: str) -> Optional[str]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Media discovery — catalogo dinamico e verifica pubblicitaria.
+#
+# Le 67 testate di config.yaml restano un catalogo PARTE del sistema, non
+# l'universo chiuso entro cui scegliere (istruzioni 9/9/2026, "Taglio 3.0").
+# Un media scoperto via AI (web search) viene verificato con una fetch reale
+# (stessa infrastruttura SSRF-safe di /api/fetch-site-summary) alla ricerca
+# di una pagina pubblicità/media kit — mai dato per "vendibile" solo perché
+# l'AI lo ha nominato. I risultati vengono salvati in un catalogo su file
+# (stesso pattern di aggregated.json) così una prossima ricerca non deve
+# riverificare un dominio già controllato di recente (istruzioni, "cache").
+# ---------------------------------------------------------------------------
+MEDIA_CATALOG_FILE = Path("media_catalog.json")
+CATALOG_CACHE_DAYS = 30
+MAX_MEDIA_DA_VERIFICARE = 10  # tetto di fetch reali per ricerca — controllo costi
+
+ADV_LINK_KEYWORDS = [
+    "pubblicità", "pubblicita", "advertising", "media kit", "mediakit",
+    "concessionaria", "inserzionisti", "info commerciali", "spazi pubblicitari",
+]
+
+
+def _find_advertising_link(html: str, base_url: str) -> Optional[str]:
+    """Stesso principio di _find_about_link, ma cerca un link alla pagina
+    pubblicitaria/media kit — l'evidenza concreta richiesta prima di
+    considerare un media come "vendibile" (istruzioni 9/9/2026, punto 7)."""
+    parsed_base = urlparse(base_url)
+    for match in re.finditer(r'<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL):
+        href = match.group(1)
+        link_text = re.sub(r"<[^>]+>", " ", match.group(2)).strip().lower()
+        href_lower = href.lower()
+        if any(kw in link_text or kw in href_lower for kw in ADV_LINK_KEYWORDS):
+            full_url = urljoin(base_url, href)
+            parsed_link = urlparse(full_url)
+            if parsed_link.scheme in ("http", "https"):
+                return full_url
+    return None
+
+
+def _canonical_domain(url_or_domain: str) -> str:
+    d = url_or_domain.strip().lower()
+    if "://" not in d:
+        d = "https://" + d
+    host = urlparse(d).hostname or d
+    return host[4:] if host.startswith("www.") else host
+
+
+def _load_media_catalog() -> dict:
+    if not MEDIA_CATALOG_FILE.exists():
+        return {}
+    try:
+        with open(MEDIA_CATALOG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_media_catalog(catalog: dict) -> None:
+    with open(MEDIA_CATALOG_FILE, "w", encoding="utf-8") as f:
+        json.dump(catalog, f, ensure_ascii=False, indent=2)
+
+
+def _verifica_advertising_evidence(dominio: str, catalog: dict) -> dict:
+    """Ritorna {advertising_evidence, advertising_page, verification_status,
+    last_verified}. Usa la cache del catalogo se il dominio è già stato
+    verificato entro CATALOG_CACHE_DAYS — mai rifare una fetch inutile
+    (istruzioni 9/9/2026, punto 26, "cache")."""
+    canonical = _canonical_domain(dominio)
+    cached = catalog.get(canonical)
+    if cached and cached.get("last_verified"):
+        try:
+            from datetime import datetime, timezone
+            eta_giorni = (datetime.now(timezone.utc) - datetime.fromisoformat(cached["last_verified"])).days
+            if eta_giorni < CATALOG_CACHE_DAYS:
+                return cached
+        except Exception:
+            pass
+
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    homepage = f"https://{canonical}"
+    risultato = {
+        "canonical_domain": canonical,
+        "advertising_evidence": "UNKNOWN",
+        "advertising_page": None,
+        "verification_status": "UNVERIFIED",
+        "last_verified": now_iso,
+        "first_discovered": (cached or {}).get("first_discovered", now_iso),
+    }
+    if not _is_safe_url(homepage):
+        return risultato
+    try:
+        html = _fetch_raw_html(homepage)
+    except Exception:
+        html = None
+    if html is None:
+        risultato["verification_status"] = "UNVERIFIED"
+        return risultato
+
+    risultato["verification_status"] = "PARTIALLY_VERIFIED"
+    adv_link = _find_advertising_link(html, homepage)
+    if adv_link:
+        risultato["advertising_evidence"] = "HIGH"
+        risultato["advertising_page"] = adv_link
+        risultato["verification_status"] = "VERIFIED"
+    else:
+        # Home raggiunta ma nessun link pubblicità/media kit trovato in
+        # homepage: non possiamo escludere che esista altrove, quindi resta
+        # un'evidenza debole, non un "non vende pubblicità" (mai un fatto
+        # negativo inventato).
+        risultato["advertising_evidence"] = "LOW"
+
+    return risultato
+
+
+# ---------------------------------------------------------------------------
+# Audience Opportunity — combinatore deterministico ed esplicito (mai una
+# seconda chiamata AI per calcolarlo: sostituisce il vecchio "affinity
+# score" percentuale con etichette qualitative, sempre spiegabili — vedi
+# istruzioni 9/9/2026, punti 9 e 29 ("no false precision").
+# ---------------------------------------------------------------------------
+_LIVELLI = {"HIGH": 3, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0, "INSUFFICIENT_DATA": 0}
+
+
+def _whitelist_fit(v, default="UNKNOWN") -> str:
+    return v if v in ("HIGH", "MEDIUM", "LOW", "UNKNOWN") else default
+
+
+def _calcola_audience_opportunity(geo_fit: str, context_fit: str, reader_intent_fit: str,
+                                   business_fit: str, advertising_evidence: str) -> str:
+    """HIGH/MEDIUM/LOW/INSUFFICIENT_DATA da geo+context+reader-intent+business
+    fit (qualitativi, dall'AI) + evidenza pubblicitaria (verificata dal
+    backend). Il budget fit NON entra qui: si applica dopo, separatamente
+    (istruzioni, punto 15 — budget dopo la discovery, non prima)."""
+    fits = [geo_fit, context_fit, reader_intent_fit, business_fit]
+    conosciuti = [f for f in fits if f != "UNKNOWN"]
+    if len(conosciuti) < 2:
+        return "INSUFFICIENT_DATA"
+    if geo_fit == "LOW":
+        # Un territorio incompatibile resta un limite forte anche con tutto
+        # il resto favorevole (stesso principio del fix ranking del 9/9).
+        return "LOW"
+    punteggio = sum(_LIVELLI[f] for f in fits) / len(fits)
+    if advertising_evidence == "HIGH":
+        punteggio += 0.3
+    elif advertising_evidence == "UNKNOWN":
+        punteggio -= 0.2
+    if punteggio >= 2.3:
+        return "HIGH"
+    if punteggio >= 1.3:
+        return "MEDIUM"
+    return "LOW"
+
+
+def _calcola_budget_fit(prezzo: Optional[dict], budget: int) -> str:
+    """UNKNOWN se non abbiamo un prezzo verificato o stimato — MAI declassato
+    a LOW solo perché non sappiamo il prezzo (istruzioni, punto 15)."""
+    if not prezzo or prezzo.get("min") is None:
+        return "UNKNOWN"
+    if prezzo["min"] > budget * 1.10:
+        return "LOW"
+    if prezzo["min"] <= budget * 0.5:
+        return "HIGH"
+    return "MEDIUM"
+
+
+def _calcola_verdetto(audience_opportunity: str, budget_fit: str, advertising_evidence: str) -> str:
+    if audience_opportunity == "INSUFFICIENT_DATA":
+        return "INVESTIGATE"
+    if audience_opportunity == "LOW":
+        return "DO_NOT_PRIORITIZE"
+    if audience_opportunity == "HIGH" and budget_fit in ("HIGH", "MEDIUM") and advertising_evidence in ("HIGH", "MEDIUM"):
+        return "CONTACT"
+    if audience_opportunity in ("HIGH", "MEDIUM") and budget_fit == "LOW":
+        return "INVESTIGATE"
+    if audience_opportunity == "MEDIUM":
+        return "CONSIDER"
+    return "INVESTIGATE"
+
+
+def _genera_domande_concessionaria(media_nome: str, azienda_region: Optional[str], budget: int, sector_label: str) -> list[str]:
+    """Domande generate da un TEMPLATE (non un'altra chiamata AI: costo
+    zero aggiuntivo — istruzioni, punto 19), ma personalizzate con i dati
+    reali della ricerca corrente, non generiche uguali per tutti."""
+    zona = azienda_region or "la tua zona"
+    domande = [
+        f"Che quota della vostra audience proviene da {zona}?",
+        f"Avete formati pubblicitari geolocalizzabili su {zona}?",
+        f"Qual è il costo indicativo di una campagna con un budget massimo di € {budget}?",
+        f"Avete dati di performance o benchmark per inserzionisti del settore {sector_label}?",
+        "Quali formati consigliate per generare contatti/preventivi, non solo visibilità?",
+    ]
+    return domande
+
+
 @app.get("/api/fetch-site-summary")
 def fetch_site_summary(url: str):
     """Legge davvero il sito indicato (dell'azienda o di un competitor) per
@@ -464,17 +815,33 @@ class GenerateAnalysisRequest(BaseModel):
     # da terzi), ma evitano che un payload anomalo gonfi inutilmente il
     # prompt/costo della chiamata Anthropic (vedi istruzioni del 9/9, "limiti
     # di dimensione dell'input").
+    #
+    # Questo oggetto è la SINGLE SOURCE OF TRUTH di una ricerca (istruzioni
+    # 9/9/2026, "Taglio 3.0", punto 1): il frontend lo ricostruisce da zero
+    # ad ogni analisi, mai riusando budget/competitor/zona di una ricerca
+    # precedente — vedi search_id.
     model_config = ConfigDict(populate_by_name=True)
+    search_id: str = Field("", max_length=100)
     name: str = Field("la tua azienda", max_length=200)
     website: str = Field("", max_length=500)
     prodotto: str = Field("", max_length=500)
     zona_geografica: str = Field("", alias="zonaGeografica", max_length=200)
     target_cliente: str = Field("", alias="targetCliente", max_length=500)
     sector_label: str = Field("il tuo settore", alias="sectorLabel", max_length=100)
+    sector_key: str = Field("", alias="sectorKey", max_length=30)  # chiave tassonomia 7-settori, per filtrare il catalogo (come /api/allocation)
+    customer_type: str = Field("", alias="customerType", max_length=20)  # B2C|B2B|BOTH|"" (non indicato)
     tone: str = Field("", max_length=100)
     competitors: list[str] = Field(default_factory=list, max_length=10)
     budget: int = Field(0, ge=0, le=10_000_000)
+    period_key: str = Field("1mese", alias="periodKey", max_length=20)
     obiettivo: str = Field("", max_length=100)
+    # Free vs Plus (istruzioni 9/9/2026, punto 24): il backend è l'unica
+    # fonte di verità sui limiti mostrati, mai un valore deciso solo lato
+    # frontend — ma qui ci fidiamo del flag solo per la PROFONDITÀ della
+    # ricerca (quanti media scoprire/mostrare), non per funzioni a
+    # pagamento sensibili (Stripe/Supabase restano l'unica fonte di verità
+    # sull'abbonamento vero).
+    is_plus: bool = Field(False, alias="isPlus")
     # Riusa il contenuto già letto dal frontend via /api/fetch-site-summary:
     # non rileggiamo lo stesso sito una seconda volta da qui (vedi istruzioni
     # del 9/9, "non effettuare una seconda lettura inutile").
@@ -486,7 +853,16 @@ def _truncate(s: str, n: int) -> str:
     return (s or "")[:n]
 
 
-def _build_analysis_prompt(payload: GenerateAnalysisRequest) -> tuple[str, bool, bool]:
+# Controllo costi (istruzioni 9/9/2026, punto 25): quanti candidati chiedere
+# all'AI in una singola chiamata. Più alto per Plus (punto 24 — "tutte le
+# opportunità, catalogo esteso, più verifiche approfondite"), ma sempre un
+# tetto esplicito, mai illimitato.
+MAX_MEDIA_DISCOVERED_FREE = 10
+MAX_MEDIA_DISCOVERED_PLUS = 16
+
+
+def _build_analysis_prompt(payload: GenerateAnalysisRequest) -> tuple[str, bool, bool, int]:
+    max_discovery = MAX_MEDIA_DISCOVERED_PLUS if payload.is_plus else MAX_MEDIA_DISCOVERED_FREE
     sito_block = ""
     if payload.sito_azienda and payload.sito_azienda.testo:
         sito_block = (
@@ -525,7 +901,18 @@ def _build_analysis_prompt(payload: GenerateAnalysisRequest) -> tuple[str, bool,
             "di sapere."
         )
 
-    prompt = f"""Sei il consulente pubblicitario AI di Taglio: aiuti una PMI italiana a decidere se e dove fare pubblicità su giornali e riviste (carta e digitale editoriale), con budget spesso limitato. Il tuo lavoro non è generare idee generiche di settore: è dimostrare che hai letto DAVVERO il sito di questa azienda specifica e, se c'è, del suo competitor.
+    # Le testate già nel catalogo (config.yaml) NON sono un universo chiuso,
+    # ma l'AI le deve comunque considerare come candidate a pieno titolo
+    # insieme a quelle scoperte via ricerca web — istruzioni 9/9/2026,
+    # "Taglio 3.0": "le 67 testate esistenti diventano parte del catalogo,
+    # non l'universo entro cui scegliere".
+    testate_catalogo = _load_testate_config()
+    allowed = categorie_rilevanti(payload.sector_key) if payload.sector_key else None
+    nomi_catalogo = sorted(testate_catalogo.keys()) if not allowed else sorted(
+        nome for nome, cats in testate_catalogo.items() if set(cats) & allowed
+    )
+
+    prompt = f"""Sei il consulente pubblicitario AI di Taglio. Il tuo compito non è scegliere la testata migliore da un elenco fisso: è capire DAVVERO questa azienda e il suo cliente potenziale, poi cercare dove — editorialmente — avrebbe senso cercare quel pubblico, includendo media che potrebbero non essere ancora nel nostro catalogo.
 
 Dati azienda:
 Nome: {payload.name}
@@ -533,43 +920,48 @@ Sito web: {payload.website or 'non indicato'}
 Prodotto o servizio specifico: {payload.prodotto or 'non indicato'}
 Zona geografica dichiarata dall'utente: {payload.zona_geografica or 'non indicata — deducila dal sito se possibile'}
 Target di clientela dichiarato: {payload.target_cliente or 'non indicato'}
-Settore scelto nel wizard: {payload.sector_label}
+Tipo cliente dichiarato: {payload.customer_type or 'non indicato — deducilo se possibile'}
+Settore scelto nel wizard (può essere generico, non vincolarti): {payload.sector_label}
 Tono di marca: {payload.tone or 'non specificato'}
 Competitor indicati: {', '.join(payload.competitors) if payload.competitors else 'nessuno'}
-Budget indicativo: € {payload.budget}
+Budget indicativo: € {payload.budget} per il periodo scelto
 Obiettivo campagna: {payload.obiettivo or 'non indicato'}
 {sito_block}{competitor_block}
 {istruzioni_fonte}
 
-REGOLA FONDAMENTALE, vale per OGNI sezione: non inventare mai clienti, recensioni, fatturato, audience, diffusione, CPM, prezzi ufficiali, certificazioni, partnership, sconti, anni di garanzia, numero di clienti, percentuali di risparmio o risultati di campagne. Se un dato non è rilevabile, dichiaralo esplicitamente invece di inventarlo — una risposta onestamente incompleta vale più di una completa ma inventata.
+REGOLA FONDAMENTALE, vale per OGNI sezione: non inventare mai clienti, recensioni, fatturato, audience, diffusione, CPM, prezzi ufficiali, certificazioni, partnership, sconti, anni di garanzia, numero di clienti, percentuali di risparmio, risultati di campagne, o dati di audience non trovati davvero. Se un dato non è rilevabile, dichiaralo esplicitamente invece di inventarlo.
 
-Determina il raggio d'azione geografico REALE dell'azienda (alimenta un algoritmo di allocazione budget, non è solo testo):
-- "market_scope": "LOCAL" (una città/provincia), "REGIONAL" (una regione), "NATIONAL" (tutta Italia), "UNKNOWN" se non determinabile
-- "market_region": nome della regione italiana se LOCAL o REGIONAL (es. "Lombardia"), altrimenti null
-- "market_confidence": "HIGH" se il sito lo dichiara esplicitamente (zona di intervento/consegna, sede, "serviamo la provincia di..."), "MEDIUM" se dedotto ragionevolmente, "LOW" se è solo un'ipotesi debole. Senza sito reale o senza indizi geografici: "UNKNOWN"/null/"LOW".
+Determina il raggio d'azione geografico REALE dell'azienda:
+- "market_scope": "LOCAL" (città/provincia), "REGIONAL" (regione), "NATIONAL" (Italia), "INTERNATIONAL", "UNKNOWN"
+- "market_region": regione italiana se LOCAL/REGIONAL, altrimenti null
+- "market_city": città se LOCAL, altrimenti null
+- "market_confidence": "HIGH" se dichiarato esplicitamente, "MEDIUM" se dedotto, "LOW" se ipotesi debole. Senza indizi: "UNKNOWN"/null/"LOW".
+- "business_model": "B2C", "B2B", "BOTH", o "UNKNOWN"
 
-Genera un oggetto "azienda" con questi campi, ciascuno {{"testo":"...","stato":"RILEVATO|DEDUZIONE|NON_DETERMINABILE"}}:
-- "attivita": cosa vende/fa davvero (1-2 frasi)
-- "area_mercato": zona operativa (es. "Milano e provincia") — coerente con market_scope/market_region sopra
-- "cliente_probabile": chi è probabilmente il cliente tipo, SOLO se deducibile da sito/target indicato
-- "leva_commerciale": l'offerta o il vantaggio commerciale che il sito mette in evidenza (es. "preventivo gratuito"), SOLO se presente
-- "call_to_action": l'azione che il sito chiede al visitatore (es. "chiama ora"), SOLO se rilevabile
-- "punti_distintivi": ARRAY di massimo 3 oggetti {{"testo":"...","stato":"..."}} — cosa distingue questa azienda secondo il sito, non frasi generiche di settore
+Genera un oggetto "azienda" con questi campi, ciascuno {{"testo":"...","stato":"RILEVATO|DEDUZIONE|NON_DETERMINABILE"}}: "attivita", "area_mercato", "cliente_probabile", "leva_commerciale", "call_to_action", più "subsector" (sotto-settore specifico, es. "ristrutturazioni residenziali" non solo "edilizia") e "punti_distintivi" come ARRAY di massimo 3 oggetti {{"testo":"...","stato":"..."}}.
+Genera anche "main_products_services" (ARRAY di stringhe, prodotti/servizi principali realmente offerti) e "customer_intents" (ARRAY di stringhe, cosa sta cercando di fare il cliente potenziale quando ha bisogno di questa azienda, es. "ristrutturare il bagno", "cambiare i serramenti" — SOLO se deducibile).
 
-{"Hai anche contenuto REALE del sito di un competitor. Genera \"competitor_confronto\": {\"disponibile\":true,\"tu_comunichi_meglio\":[\"...\"],\"competitor_comunica_meglio\":[\"...\"],\"opportunita\":[\"...\"],\"messaggio_da_possedere\":\"...\"} — 1-3 elementi per lista, differenze COMMERCIALMENTE UTILI (non un'analisi SEO), basate solo su ciò che i due siti dicono davvero. \"messaggio_da_possedere\" è una frase/angolo di comunicazione che l'azienda potrebbe rivendicare rispetto al competitor." if ha_competitor_reale else "Non hai contenuto reale di un competitor: genera \"competitor_confronto\": {\"disponibile\":false}, senza altri campi — non inventare un confronto."}
+{"Hai anche contenuto REALE del sito di un competitor. Genera \"competitor_confronto\": {\"disponibile\":true,\"tu_comunichi_meglio\":[\"...\"],\"competitor_comunica_meglio\":[\"...\"],\"opportunita\":[\"...\"],\"messaggio_da_possedere\":\"...\"} — differenze COMMERCIALMENTE UTILI, basate solo su ciò che i due siti dicono davvero." if ha_competitor_reale else "Non hai contenuto reale di un competitor: genera \"competitor_confronto\": {\"disponibile\":false}."}
 
-Genera "messaggio_pubblicitario": {{"headline":"...","sottoheadline":"...","cta":"...","argomento_principale":"...","prova_fatto":"..."}} — un messaggio pubblicitario pronto all'uso, basato SOLO su ciò che è realmente disponibile (leva commerciale, prodotto, zona). "prova_fatto" è un elemento concreto e verificabile dal sito (es. "sede a Milano dal ...", non un numero inventato). Se non hai abbastanza materiale reale, usa frasi generiche ma oneste (es. "Richiedi maggiori informazioni") invece di inventare specifiche.
+MEDIA STRATEGY — prima di cercare nomi di testate, ragiona su DOVE potrebbe trovarsi editorialmente il cliente potenziale di questa azienda specifica (non una lista generica uguale per tutti i settori). Genera "media_strategy": ARRAY di oggetti {{"category":"...","reason":"...","priority":"HIGH|MEDIUM|LOW","evidence":"..."}} — 3-6 categorie pertinenti a QUESTA azienda.
 
-Genera "creativita" con tre livelli, ciascuno {{"titolo":"...","perche":"...","dove":"...","messaggio":"...","rischio":"..."}}:
-- "consigliata": l'idea che useresti davvero per QUESTA azienda, basso rischio, coerente col profilo sopra
-- "alternativa": un'idea più distintiva ma ancora ragionevole
-- "audace": un meccanismo preso in prestito da un altro settore, solo come terza opzione
+MEDIA DISCOVERY — usa la ricerca web per trovare fino a {max_discovery} media (quotidiani, quotidiani online, settimanali, periodici, free press, magazine verticali, portali editoriali, media locali o professionali) realmente pertinenti al profilo sopra. NON limitarti a nomi noti o ovvi: cerca davvero. NON includere marketplace, directory, piattaforme di lead generation, social network o motori di ricerca come se fossero media editoriali — se ne trovi uno pertinente, includilo con "channel_type":"MARKETPLACE|DIRECTORY|LEAD_GEN|SOCIAL|SEARCH_ENGINE" invece di "MEDIA", verrà trattato separatamente.
+{"Considera anche, se pertinenti, queste testate già nel nostro catalogo: " + ', '.join(nomi_catalogo[:60]) + "." if nomi_catalogo else ""}
 
-Tutte le idee devono essere realizzabili su carta stampata o adv editoriale digitale.
+Per ogni media (di catalogo o nuovo) genera un oggetto in "media_discovered": {{"nome":"...","dominio":"...","tipo":"quotidiano|quotidiano_online|settimanale|periodico|free_press|magazine|verticale|portale|altro","channel_type":"MEDIA|MARKETPLACE|DIRECTORY|LEAD_GEN|SOCIAL|SEARCH_ENGINE","geographic_scope":"LOCAL|REGIONAL|NATIONAL|UNKNOWN","region":"..." o null,"topics":["...","..."],"geo_fit":"HIGH|MEDIUM|LOW|UNKNOWN","context_fit":"HIGH|MEDIUM|LOW|UNKNOWN","reader_intent_fit":"HIGH|MEDIUM|LOW|UNKNOWN","business_fit":"HIGH|MEDIUM|LOW|UNKNOWN","perche":"1-3 ragioni concrete, non generiche"}}.
+- "geo_fit": confronta il territorio del media con quello dell'azienda — LOW se palesemente incompatibile (es. azienda locale Lombardia + media regionale Sardegna), indipendentemente da quanti dati abbiamo.
+- "context_fit": quanto gli argomenti/sezioni editoriali del media sono coerenti col bisogno del cliente potenziale (es. media dedicato a ristrutturazione + azienda di ristrutturazioni → HIGH).
+- "reader_intent_fit": inferenza dal CONTESTO editoriale (non dati reali di comportamento lettori) su quanto chi legge quel media potrebbe avere l'intento d'acquisto del cliente tipo.
+- "business_fit": coerenza col business_model (B2C/B2B) — un media per professionisti è business_fit basso per un'azienda B2C locale, e viceversa.
+- Se non hai abbastanza informazioni per un campo, usa "UNKNOWN", mai un'invenzione.
 
-Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, con esattamente queste chiavi: analisi_azienda (stringa, 1 frase di sintesi), market_scope, market_region, market_confidence, azienda, competitor_confronto, messaggio_pubblicitario, creativita. Scrivi tutti i testi in italiano."""
+Genera "messaggio_pubblicitario": {{"headline":"...","sottoheadline":"...","cta":"...","argomento_principale":"...","prova_fatto":"..."}} basato SOLO su ciò che è realmente disponibile.
 
-    return prompt, ha_sito_reale, ha_competitor_reale
+Genera "creativita" con tre livelli ({{"titolo":"...","perche":"...","dove":"...","messaggio":"...","rischio":"..."}}): "consigliata" (basso rischio, coerente), "alternativa" (più distintiva), "audace" (meccanismo da altro settore).
+
+Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, con esattamente queste chiavi: analisi_azienda, market_scope, market_region, market_city, market_confidence, business_model, azienda, main_products_services, customer_intents, competitor_confronto, media_strategy, media_discovered, messaggio_pubblicitario, creativita. Scrivi tutti i testi in italiano."""
+
+    return prompt, ha_sito_reale, ha_competitor_reale, max_discovery
 
 
 @app.post("/api/generate-analysis")
@@ -584,7 +976,7 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
     if not _check_rate_limit(client_key):
         raise HTTPException(status_code=429, detail="Troppe richieste di analisi in poco tempo. Riprova tra qualche minuto.")
 
-    prompt, ha_sito_reale, ha_competitor_reale = _build_analysis_prompt(payload)
+    prompt, ha_sito_reale, ha_competitor_reale, max_discovery = _build_analysis_prompt(payload)
 
     try:
         resp = requests.post(
@@ -596,25 +988,28 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
             },
             json={
                 "model": ANTHROPIC_MODEL,
-                # Lo schema esteso (profilo azienda + confronto competitor +
-                # messaggio pubblicitario + 3 livelli di creatività) produce
-                # una risposta più lunga del vecchio formato: con 2500 il
-                # modello troncava a metà stringa quando c'era anche un
-                # competitor reale da confrontare, rompendo il JSON
-                # (osservato in produzione il 9/9/2026, stop_reason
-                # "max_tokens" con output_tokens già al tetto).
-                "max_tokens": 4500,
-                # Il "thinking" esteso di alcuni modelli Claude consuma parte
-                # del budget di max_tokens PRIMA di produrre il testo vero e
-                # proprio: su un prompt come questo può da solo esaurire
-                # max_tokens, troncando la risposta a zero testo (osservato
-                # in test locale il 9/9/2026). Qui serve solo il JSON finale,
-                # non un ragionamento visibile, quindi lo disabilitiamo:
-                # risposta più affidabile e più economica.
+                # Lo schema Taglio 3.0 (profilo azienda esteso + media
+                # strategy + fino a 16 media scoperti per un utente Plus,
+                # ciascuno con più campi di fit + motivazione, + 3 varianti
+                # di creatività) produce una risposta molto lunga — con
+                # 8000 alcune risposte reali (soprattutto lato Plus, con più
+                # media da descrivere) si troncavano a metà JSON e fallivano
+                # il parsing lato server (osservato in test reale il
+                # 9/9/2026, ~1 chiamata su 3). Margine ampio qui perché il
+                # costo è comunque per singola ricerca (vedi "cost control").
+                "max_tokens": 12000,
                 "thinking": {"type": "disabled"},
+                # Ricerca web reale per la Media Discovery (istruzioni
+                # 9/9/2026, "Taglio 3.0", punto 4) — non nomi a memoria del
+                # modello, ma dominii verificabili. max_uses tiene sotto
+                # controllo il costo per ricerca (punto 25, "cost control");
+                # il backend verifica comunque ogni dominio con una fetch
+                # reale prima di considerarlo attendibile (mai fiducia cieca
+                # nella ricerca del modello).
+                "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
                 "messages": [{"role": "user", "content": prompt}],
             },
-            timeout=45,
+            timeout=90,
         )
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=504, detail="Il motore AI non ha risposto in tempo. Riprova.")
@@ -626,12 +1021,34 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
         # solo un messaggio generico, i dettagli restano nei log del server.
         raise HTTPException(status_code=502, detail="Il motore AI ha risposto con un errore. Riprova più tardi.")
 
+    data: dict = {}
+    text = ""
     try:
         data = resp.json()
-        text = "".join(block.get("text", "") for block in data.get("content", []))
-        clean = re.sub(r"```json|```", "", text).strip()
-        parsed = json.loads(clean)
-    except Exception:
+        # Con il tool di ricerca web, "content" contiene anche blocchi
+        # server_tool_use/web_search_tool_result intercalati: prendiamo
+        # solo i blocchi di testo, nell'ordine in cui arrivano (il JSON
+        # finale è nell'ultimo/unico blocco "text").
+        text = "".join(block.get("text", "") for block in data.get("content", []) if block.get("type") == "text")
+        # Con il tool di ricerca web attivo il modello a volte antepone una
+        # breve frase di transizione prima del JSON (es. "Ho raccolto
+        # abbastanza informazioni...") nonostante l'istruzione di rispondere
+        # SOLO con JSON — osservato in test reale il 9/9/2026. Cerchiamo il
+        # blocco {...} più esterno invece di fidarci che inizi a carattere 0.
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if not match:
+            raise ValueError("nessun blocco JSON trovato nella risposta")
+        parsed = json.loads(match.group(0))
+    except Exception as exc:
+        # Diagnostica solo nei log del server (mai al client): stop_reason
+        # dice se il modello si è fermato per max_tokens (JSON troncato) o
+        # per fine naturale con un formato inatteso — differenza osservata
+        # in test reale il 9/9/2026 (~1 chiamata su 3 falliva così).
+        logger.error(
+            "generate-analysis: parsing JSON fallito (%s: %s) — stop_reason=%s output_tokens=%s coda_testo=%r",
+            type(exc).__name__, exc,
+            data.get("stop_reason"), data.get("usage", {}).get("output_tokens"), text[-500:],
+        )
         raise HTTPException(status_code=502, detail="Risposta AI in un formato inatteso. Riprova.")
 
     if not isinstance(parsed, dict):
@@ -651,6 +1068,12 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
     market_region = parsed.get("market_region")
     if not isinstance(market_region, str) or not market_region.strip() or market_scope not in ("LOCAL", "REGIONAL"):
         market_region = None
+    market_city = parsed.get("market_city")
+    if not isinstance(market_city, str) or not market_city.strip() or market_scope != "LOCAL":
+        market_city = None
+    business_model = parsed.get("business_model")
+    if business_model not in ("B2C", "B2B", "BOTH"):
+        business_model = "UNKNOWN"
 
     def _campo(v) -> dict:
         """Normalizza un campo {testo, stato}: mai un'invenzione strutturale
@@ -672,11 +1095,20 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
     azienda = {
         "attivita": _campo(azienda_raw.get("attivita")),
         "area_mercato": _campo(azienda_raw.get("area_mercato")),
+        "subsector": _campo(azienda_raw.get("subsector")),
         "cliente_probabile": _campo(azienda_raw.get("cliente_probabile")),
         "leva_commerciale": _campo(azienda_raw.get("leva_commerciale")),
         "call_to_action": _campo(azienda_raw.get("call_to_action")),
         "punti_distintivi": punti_distintivi,
     }
+
+    def _lista_stringhe(v, max_n=6) -> list[str]:
+        if not isinstance(v, list):
+            return []
+        return [str(x).strip() for x in v if isinstance(x, (str, int, float)) and str(x).strip()][:max_n]
+
+    main_products_services = _lista_stringhe(parsed.get("main_products_services"))
+    customer_intents = _lista_stringhe(parsed.get("customer_intents"))
 
     # Il confronto competitor è forzato lato server in base a cosa abbiamo
     # DAVVERO passato al modello (non a cosa il modello dichiara): se non
@@ -730,14 +1162,199 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
     if not creativita["consigliata"]["titolo"]:
         raise HTTPException(status_code=502, detail="Risposta AI incompleta. Riprova.")
 
+    # Media strategy: le categorie devono venire dal profilo di QUESTA
+    # azienda, non da una lista fissa per settore (istruzioni, punto 3).
+    media_strategy_raw = parsed.get("media_strategy")
+    media_strategy = []
+    if isinstance(media_strategy_raw, list):
+        for m in media_strategy_raw[:8]:
+            if not isinstance(m, dict) or not m.get("category"):
+                continue
+            priority = m.get("priority") if m.get("priority") in ("HIGH", "MEDIUM", "LOW") else "MEDIUM"
+            media_strategy.append({
+                "category": str(m["category"])[:120],
+                "reason": _testo(m.get("reason"))[:300],
+                "priority": priority,
+                "evidence": _testo(m.get("evidence"))[:300],
+            })
+
+    # ------------------------------------------------------------------
+    # Media discovered: normalizzazione + deduplica per dominio canonico +
+    # incrocio col catalogo esistente + verifica pubblicitaria reale per i
+    # media davvero nuovi + calcolo di Audience Opportunity/Budget Fit/
+    # Verdetto (istruzioni 9/9/2026, "Taglio 3.0", punti 6-18).
+    # ------------------------------------------------------------------
+    testate_urls = _load_testate_urls()
+    dominio_to_nome_catalogo = {v: k for k, v in testate_urls.items()}
+    aggregated_by_nome = {}
+    if AGGREGATED_FILE.exists():
+        with open(AGGREGATED_FILE, "r", encoding="utf-8") as f:
+            for row in json.load(f):
+                aggregated_by_nome[row["nome"]] = row
+
+    media_catalog_cache = _load_media_catalog()
+    media_grezzi = parsed.get("media_discovered")
+    media_normalizzati = []
+    visti_domini = set()
+    if isinstance(media_grezzi, list):
+        for m in media_grezzi[:max_discovery]:
+            if not isinstance(m, dict) or not m.get("nome") or not m.get("dominio"):
+                continue
+            try:
+                canonical = _canonical_domain(str(m["dominio"]))
+            except Exception:
+                continue
+            if not canonical or "." not in canonical or canonical in visti_domini:
+                continue
+            visti_domini.add(canonical)
+            media_normalizzati.append({
+                "nome": str(m["nome"])[:150],
+                "dominio": canonical,
+                "tipo": str(m.get("tipo") or "altro")[:40],
+                "channel_type": m.get("channel_type") if m.get("channel_type") in
+                    ("MEDIA", "MARKETPLACE", "DIRECTORY", "LEAD_GEN", "SOCIAL", "SEARCH_ENGINE") else "MEDIA",
+                "geographic_scope": _whitelist_fit(m.get("geographic_scope"), "UNKNOWN") if m.get("geographic_scope") in ("LOCAL", "REGIONAL", "NATIONAL") else "UNKNOWN",
+                "region": str(m["region"])[:60] if isinstance(m.get("region"), str) and m.get("region", "").strip() else None,
+                "topics": _lista_stringhe(m.get("topics"), 5),
+                "geo_fit": _whitelist_fit(m.get("geo_fit")),
+                "context_fit": _whitelist_fit(m.get("context_fit")),
+                "reader_intent_fit": _whitelist_fit(m.get("reader_intent_fit")),
+                "business_fit": _whitelist_fit(m.get("business_fit")),
+                "perche": _testo(m.get("perche"))[:400],
+            })
+
+    media_editoriali = []
+    canali_alternativi = []
+    for m in media_normalizzati:
+        if m["channel_type"] != "MEDIA":
+            # Marketplace/directory/lead-gen/social/motori di ricerca:
+            # conservati ma MAI dentro il ranking editoriale (istruzioni,
+            # punto 5 — "non deve entrare automaticamente nel ranking").
+            canali_alternativi.append({"nome": m["nome"], "dominio": m["dominio"], "channel_type": m["channel_type"], "perche": m["perche"]})
+            continue
+
+        nome_catalogo = dominio_to_nome_catalogo.get(m["dominio"])
+        if nome_catalogo:
+            # Fonte: catalogo — usa la geo-classificazione già validata e i
+            # dati reali di scraping come segnale bonus, mai come requisito
+            # (istruzioni, punto 13).
+            scope_cat, regione_cat = _classifica_geo_testata_catalogo(nome_catalogo)
+            m["geographic_scope"] = scope_cat
+            m["region"] = regione_cat
+            m["fonte"] = "catalogo"
+            m["verification_status"] = "VERIFIED"
+            riga = aggregated_by_nome.get(nome_catalogo)
+            if riga:
+                m["advertising_evidence"] = "HIGH" if (riga.get("segnali_osservati") or 0) > 0 else "MEDIUM"
+                m["advertising_page"] = riga.get("contatto_pubblicitario_url")
+                m["segnale_competitivo"] = {
+                    "stato": "PROBABLE" if (riga.get("segnali_osservati") or 0) > 0 else "UNKNOWN",
+                    "testo": (f"Nelle nostre rilevazioni abbiamo osservato {riga['segnali_osservati']} segnali "
+                              f"pubblicitari su questa testata (ultima rilevazione: {riga.get('ultima_osservazione') or 'n/d'})."
+                              if (riga.get("segnali_osservati") or 0) > 0 else
+                              "Nelle rilevazioni disponibili non abbiamo identificato advertiser comparabili."),
+                }
+                m["prezzo"] = _stima_prezzo_catalogo(nome_catalogo, riga.get("formato"), riga.get("formato_categoria"), payload.period_key)
+                m["ultima_rilevazione"] = riga.get("ultima_osservazione")
+            else:
+                m["advertising_evidence"] = "UNKNOWN"
+                m["advertising_page"] = None
+                m["segnale_competitivo"] = {"stato": "UNKNOWN", "testo": "Nessuna rilevazione ancora disponibile per questa testata."}
+                m["prezzo"] = {"tier": "PRICE_ON_REQUEST", "min": None, "max": None, "fonte": "Prezzo da richiedere alla concessionaria."}
+                m["ultima_rilevazione"] = None
+        else:
+            # Fonte: discovery — verifica reale (fetch + cache), mai un
+            # prezzo (nessuna fascia nota per un media appena scoperto).
+            verifica = _verifica_advertising_evidence(m["dominio"], media_catalog_cache)
+            media_catalog_cache[m["dominio"]] = verifica
+            m["fonte"] = "discovery"
+            m["verification_status"] = verifica["verification_status"]
+            m["advertising_evidence"] = verifica["advertising_evidence"]
+            m["advertising_page"] = verifica["advertising_page"]
+            m["segnale_competitivo"] = {"stato": "UNKNOWN", "testo": "Media appena scoperto: nessuna rilevazione storica ancora disponibile."}
+            m["prezzo"] = {"tier": "PRICE_ON_REQUEST", "min": None, "max": None, "fonte": "Prezzo da richiedere alla concessionaria."}
+            m["ultima_rilevazione"] = None
+
+        m["audience_opportunity"] = _calcola_audience_opportunity(
+            m["geo_fit"], m["context_fit"], m["reader_intent_fit"], m["business_fit"], m["advertising_evidence"]
+        )
+        m["budget_fit"] = _calcola_budget_fit(m["prezzo"], payload.budget)
+        m["verdetto"] = _calcola_verdetto(m["audience_opportunity"], m["budget_fit"], m["advertising_evidence"])
+        m["data_confidence"] = "HIGH" if m["fonte"] == "catalogo" and m.get("ultima_rilevazione") else (
+            "MEDIUM" if m["verification_status"] in ("VERIFIED", "PARTIALLY_VERIFIED") else "LOW")
+        media_editoriali.append(m)
+
+    _save_media_catalog(media_catalog_cache)
+
+    # Ordinamento: PRIMA per Audience Opportunity (la qualità reale
+    # dell'opportunità), poi per verdetto come criterio secondario. Un
+    # budget_fit UNKNOWN (prezzo non noto, comune per un media appena
+    # scoperto) porta quasi sempre a verdetto INVESTIGATE anche con
+    # Audience Opportunity HIGH — se il verdetto pesasse più dell'Audience
+    # Opportunity nell'ordinamento, un'opportunità HIGH-ma-da-approfondire
+    # finirebbe sotto una MEDIA-ma-contattabile: un bug reale trovato in
+    # test il 9/9/2026 (vedi "Taglio 3.0", punto 18 — "le migliori
+    # opportunità" deve riflettere la qualità, non solo l'azionabilità
+    # immediata). Mai un punteggio decimale mostrato: l'ordine è solo
+    # interno, per scegliere il top 5.
+    _ORDINE_VERDETTO = {"CONTACT": 3, "CONSIDER": 2, "INVESTIGATE": 1, "DO_NOT_PRIORITIZE": 0}
+    media_editoriali.sort(key=lambda m: (_LIVELLI.get(m["audience_opportunity"], 0), _ORDINE_VERDETTO[m["verdetto"]]), reverse=True)
+
+    # Free vs Plus (istruzioni, punto 24): Free mostra comunque un risultato
+    # utile e completo (non impoverito ad arte), Plus mostra tutte le
+    # opportunità trovate nel campione più ampio già scoperto sopra.
+    tetto_opportunita = 8 if payload.is_plus else 5
+    tetto_approfondire = 8 if payload.is_plus else 3
+    opportunita_migliori = [m for m in media_editoriali if m["verdetto"] != "DO_NOT_PRIORITIZE"][:tetto_opportunita]
+    da_approfondire = [m for m in media_editoriali if m["verdetto"] in ("INVESTIGATE", "CONSIDER") and m not in opportunita_migliori][:tetto_approfondire]
+    # "Dove non investirei": SOLO ragioni reali (geo/contesto/budget), MAI
+    # solo perché "pochi dati" (istruzioni, punto 21).
+    dove_non_investirei = [
+        m for m in media_editoriali
+        if m["verdetto"] == "DO_NOT_PRIORITIZE" and (m["geo_fit"] == "LOW" or m["context_fit"] == "LOW" or m["budget_fit"] == "LOW")
+    ][:3]
+
+    azienda_regione_per_domande = market_region or market_city
+    # Se l'utente non ha scelto un settore nel wizard, usa il sotto-settore
+    # dedotto dall'AI (es. "ristrutturazioni residenziali") invece di una
+    # stringa vuota — altrimenti la domanda diventa "inserzionisti del
+    # settore ?" (bug osservato in test il 9/9/2026 col caso NM Edilizia).
+    settore_per_domande = payload.sector_label if payload.sector_label and payload.sector_label != "il tuo settore" else (
+        azienda["subsector"]["testo"] or "questo settore"
+    )
+    for m in opportunita_migliori:
+        if m["verdetto"] in ("CONTACT", "INVESTIGATE"):
+            m["domande_concessionaria"] = _genera_domande_concessionaria(m["nome"], azienda_regione_per_domande, payload.budget, settore_per_domande)
+        else:
+            m["domande_concessionaria"] = []
+
+    # FREE mostra solo il messaggio pubblicitario base e l'idea consigliata;
+    # PLUS sblocca anche l'alternativa e l'audace (istruzioni, punto 24 —
+    # "tutte le creatività/varianti" solo per Plus). Nessun dato tolto,
+    # solo non generato nel risultato finale per chi non è abbonato.
+    creativita_risposta = {"consigliata": creativita["consigliata"]}
+    if payload.is_plus:
+        creativita_risposta["alternativa"] = creativita["alternativa"]
+        creativita_risposta["audace"] = creativita["audace"]
+
     return {
         "analisi_azienda": parsed.get("analisi_azienda", "") if isinstance(parsed.get("analisi_azienda"), str) else "",
         "market_scope": market_scope,
         "market_region": market_region,
+        "market_city": market_city,
         "market_confidence": market_confidence,
+        "business_model": business_model,
         "azienda": azienda,
+        "main_products_services": main_products_services,
+        "customer_intents": customer_intents,
         "competitor_confronto": competitor_confronto,
+        "media_strategy": media_strategy,
+        "opportunita_migliori": opportunita_migliori,
+        "media_da_approfondire": da_approfondire,
+        "dove_non_investirei": dove_non_investirei,
+        "canali_alternativi": canali_alternativi,
         "messaggio_pubblicitario": messaggio_pubblicitario,
-        "creativita": creativita,
+        "creativita": creativita_risposta,
+        "is_plus": payload.is_plus,
         "sito_letto_davvero": ha_sito_reale,
     }

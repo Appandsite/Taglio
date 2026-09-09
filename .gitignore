@@ -10,3 +10,11 @@ __pycache__/
 # e scraper/validate_dataset.py, istruzioni del 9/9/2026 punto 3).
 # Resta ignorato solo il file candidato temporaneo prima della validazione.
 scraper/aggregated.new.json
+
+# Catalogo media scoperti da Media Discovery (Taglio 3.0): cache runtime
+# scritta dal processo API stesso, non uno storico curato a mano come
+# aggregated.json — su Render (piano free, disco effimero) viene comunque
+# ricreata da zero ad ogni riavvio, quindi non ha senso versionarla né
+# rischiare di committare dati di test locali come se fossero un seed reale.
+scraper/media_catalog.json
+scraper/*.log
