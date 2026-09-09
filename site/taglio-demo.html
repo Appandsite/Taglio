@@ -528,6 +528,7 @@
         <div class="field">
           <label for="sector">Settore</label>
           <select id="sector">
+            <option value="" disabled selected>Seleziona il tuo settore…</option>
             <option value="automotive">Automotive</option>
             <option value="moda">Moda e lusso</option>
             <option value="food">Food &amp; beverage</option>
@@ -655,37 +656,67 @@
 
         <div class="result-block" id="aiUnavailablePanel" style="display:none;">
           <h3>Analisi AI</h3>
-          <p class="step-intro" style="margin-bottom:14px;">Analisi AI temporaneamente non disponibile. I dati rilevati sulle testate restano consultabili qui sotto.</p>
+          <p class="step-intro" style="margin-bottom:14px;" id="aiUnavailableText"></p>
           <p class="auth-error" id="aiRetryError" hidden></p>
           <div class="btn-row" style="margin-top:0;">
             <button class="btn btn-primary" id="retryAiBtn" type="button">Riprova analisi AI</button>
           </div>
         </div>
 
-        <div class="result-block" id="strategyBlock" style="display:none;">
-          <h3>Consigli su misura</h3>
-          <p class="alloc-caption" id="strategyCaption"></p>
-          <p class="step-intro" id="analisiAziendaText" style="margin-bottom:18px;"></p>
-          <ul id="consigliList" class="consigli-list"></ul>
+        <div class="result-block" id="seccAzienda">
+          <h3 id="seccAziendaTitolo">Quello che abbiamo capito</h3>
+          <div id="aziendaBody"></div>
         </div>
 
-        <div class="result-block">
-          <h3>Allocazione consigliata del budget</h3>
+        <div class="result-block" id="seccCompetitor">
+          <h3 id="seccCompetitorTitolo">Confronto competitor</h3>
+          <div id="competitorBody"></div>
+        </div>
+
+        <div class="result-block" id="seccVerdetto">
+          <h3 id="seccVerdettoTitolo">Con il tuo budget, cosa farei</h3>
+          <div id="verdettoBody"></div>
+        </div>
+
+        <div class="result-block" id="seccNonSpenderei" style="display:none;">
+          <h3>Dove non spenderei il tuo budget</h3>
+          <div id="nonSpendereiBody"></div>
+        </div>
+
+        <div class="result-block" id="seccOpportunita" style="display:none;">
+          <h3>Le opportunità migliori per te</h3>
           <p class="alloc-caption" id="datasetStatusLine"></p>
-          <p class="alloc-caption">Selezione e stime tarate sul budget indicato — non sempre le testate più "importanti", ma quelle che il budget può davvero coprire. Dove disponibile, il posizionamento consigliato si basa sulla densità di altri inserzionisti rilevata per zona di pagina, non sull'identificazione di competitor specifici.</p>
-          <div id="allocList"></div>
+          <div id="opportunitaBody"></div>
         </div>
 
-        <div id="ideeBlock">
-          <div class="result-block">
-            <h3>Idea sicura</h3>
-            <div id="ideaSicura"></div>
-          </div>
+        <div class="result-block" id="seccPertinentiSenzaDati" style="display:none;">
+          <h3>Potenzialmente interessanti, dati insufficienti</h3>
+          <div id="pertinentiSenzaDatiBody"></div>
+        </div>
 
-          <div class="result-block">
-            <h3>Idee audaci</h3>
-            <div id="ideeAudaci"></div>
-          </div>
+        <div class="result-block" id="seccBudgetAllocazione" style="display:none;">
+          <h3>Come distribuirei il budget</h3>
+          <div id="budgetAllocazioneBody"></div>
+        </div>
+
+        <div class="result-block" id="seccMessaggio">
+          <h3>Il messaggio che userei</h3>
+          <div id="messaggioBody"></div>
+        </div>
+
+        <div class="result-block" id="seccCreativita">
+          <h3>Creatività</h3>
+          <div id="creativitaBody"></div>
+        </div>
+
+        <div class="result-block" id="seccAzioni">
+          <h3>Le 3 cose che farei adesso</h3>
+          <div id="azioniBody"></div>
+        </div>
+
+        <div class="result-block" id="seccRetention">
+          <h3>Cosa controlleremo per te</h3>
+          <div id="retentionBody"></div>
         </div>
 
         <div class="demo-note" id="demoNote"></div>
@@ -992,6 +1023,7 @@
         posizionamento: t.posizionamento_consigliato || null,
         contattoUrl: t.contatto_pubblicitario_url || null,
         ultimaOsservazione: t.ultima_osservazione || null,
+        segnaliOsservati: typeof t.segnali_osservati === 'number' ? t.segnali_osservati : 0,
         // Di default "osservato" solo se ha davvero una quota numerica:
         // così anche se il backend non manda "stato" esplicitamente, una
         // riga senza segnali reali non finisce trattata come osservata.
@@ -1359,94 +1391,100 @@
   // per un budget di €2.000, perché il vecchio limite (15%, tollerato dopo
   // le prime 2 testate) si misurava sul costo MEDIO, non sul minimo).
   const BUDGET_TOLLERANZA = 1.10;
-  // Penalità per una testata regionale/locale di un territorio diverso da
-  // quello dell'azienda: non un'esclusione a parte, ma un fattore così
-  // basso da non poter mai vincere la selezione — le teniamo comunque
-  // tracciate separatamente (vedi sotto) per poterle segnalare come escluse.
-  const GEO_INCOMPATIBILE_FATTORE = 0.05;
+  // Soglie per "dati disponibili": sui dati reali del 9/9/2026 i segnali
+  // osservati per testata vanno da 2 a 104 (mediana 17) — sotto i 5 il
+  // segnale è troppo debole per fidarsene, sopra i 20 è solido.
+  const SOGLIA_DATI_BUONI = 20;
+  const SOGLIA_DATI_PARZIALI = 5;
 
   function buildAllocationPlan(candidates, budget, periodoKey, aziendaGeo){
-    if(!candidates.length) return { selected: [], escluseGeografiche: [] };
+    const vuoto = { opportunita: [], selected: [], escluseGeografiche: [], escluseBudget: [], nonAllocato: budget };
+    if(!candidates.length) return vuoto;
 
-    const scored = candidates.map((t, i)=>{
+    // Un vincolo geografico esiste solo se conosciamo un territorio preciso
+    // dell'azienda (utente o AI con confidenza sufficiente — vedi
+    // determinaGeoAzienda). Senza quello, nessuna testata va penalizzata o
+    // favorita per zona: è la differenza tra "non sappiamo" e "sappiamo che
+    // è ovunque".
+    const vincoloGeografico = aziendaGeo.scope === 'REGIONAL' || aziendaGeo.scope === 'LOCAL';
+
+    const scored = candidates.map((t)=>{
       const est = estimateCost(t.nome, t.formato, periodoKey, t.formatoCategoria);
-      const costMid = (est.totMin + est.totMax) / 2;
-      // Rilevanza: la quota originale (presenza pubblicitaria reale — DATA
-      // AVAILABILITY, cioè "quanto sappiamo di questa testata") se c'è,
-      // altrimenti l'ordine in elenco. Da sola NON dice se la testata è
-      // adatta all'azienda: quello lo decide la geo-compatibilità qui sotto
-      // (MEDIA FIT), applicata come fattore separato, non mescolata dentro
-      // lo stesso numero fin dall'inizio — vedi istruzioni del 9/9/2026,
-      // punto 2 ("non confondere disponibilità dati con affinità").
-      let rilevanza = (typeof t.quota === 'number') ? t.quota : Math.max(100 - i * 8, 10);
       const testataGeo = classificaGeoTestata(t.nome);
       const compatibile = geoCompatibile(testataGeo, aziendaGeo);
-      const zonaMatch = compatibile && testataGeo.scope !== 'NATIONAL' &&
-        aziendaGeo.scope !== 'UNKNOWN' && aziendaGeo.scope !== 'NATIONAL';
-      if(zonaMatch) rilevanza *= 1.8;
-      if(!compatibile) rilevanza *= GEO_INCOMPATIBILE_FATTORE;
-      return { ...t, est, costMid, rilevanza, testataGeo, zonaMatch, geoCompatibile: compatibile };
+      const zonaMatch = compatibile && testataGeo.scope !== 'NATIONAL' && vincoloGeografico;
+
+      // MEDIA FIT SCORE: quanto questa testata è adatta all'azienda —
+      // geografia + affidabilità dei dati + sostenibilità del costo. NON
+      // include la quota/presenza pubblicitaria grezza: quella è solo
+      // "quanti dati abbiamo", non "quanto è adatta" (istruzioni 9/9/2026,
+      // punto 2 — "non confondere disponibilità dati con affinità").
+      const coerenzaGeografica = !vincoloGeografico ? 'Alta' : (zonaMatch ? 'Alta' : 'Media');
+
+      const segnali = typeof t.segnaliOsservati === 'number' ? t.segnaliOsservati : 0;
+      const datiDisponibili = segnali >= SOGLIA_DATI_BUONI ? 'Buoni' : (segnali >= SOGLIA_DATI_PARZIALI ? 'Parziali' : 'Insufficienti');
+
+      const frazioneBudget = est.totMin / budget;
+      const compatibilitaBudget = frazioneBudget > BUDGET_TOLLERANZA ? 'Fuori budget'
+        : (frazioneBudget <= 0.5 ? 'Alta' : (frazioneBudget <= 0.9 ? 'Media' : 'Bassa'));
+
+      const puntiGeo = coerenzaGeografica === 'Alta' ? 3 : 1.5;
+      const puntiDati = datiDisponibili === 'Buoni' ? 2 : (datiDisponibili === 'Parziali' ? 1 : 0.2);
+      const puntiBudget = compatibilitaBudget === 'Alta' ? 2 : (compatibilitaBudget === 'Media' ? 1.2 : (compatibilitaBudget === 'Bassa' ? 0.5 : 0));
+      const mediaFitScore = puntiGeo + puntiDati + puntiBudget;
+
+      let raccomandazione;
+      if(compatibilitaBudget === 'Fuori budget' || datiDisponibili === 'Insufficienti') raccomandazione = 'NON INVESTIREI';
+      else if(coerenzaGeografica === 'Alta' && compatibilitaBudget !== 'Bassa' && datiDisponibili === 'Buoni') raccomandazione = 'INVESTIREI';
+      else raccomandazione = 'VALUTEREI';
+
+      return { ...t, est, testataGeo, geoCompatibile: compatibile, zonaMatch, coerenzaGeografica, datiDisponibili, compatibilitaBudget, mediaFitScore, raccomandazione };
     });
 
     // Le testate geograficamente incompatibili con un'azienda locale/
-    // regionale sono escluse del tutto dal piano, non solo penalizzate in
-    // classifica: "non deve poter diventare raccomandazione primaria"
-    // significa qui "non deve poter essere raccomandazione", punto.
-    // Restano comunque tracciate per il debug/report ("escluse per
-    // incompatibilità geografica").
+    // regionale sono escluse del tutto: "non deve poter diventare
+    // raccomandazione primaria" qui significa "non compare proprio" — non
+    // solo penalizzata in classifica (istruzioni 9/9/2026, ranking punto 1).
     const compatibili = scored.filter(t => t.geoCompatibile);
     const escluseGeografiche = scored.filter(t => !t.geoCompatibile);
 
-    compatibili.forEach(t=>{
-      const frazioneBudget = t.costMid / budget;
-      const penalita = Math.max(0, frazioneBudget - 0.35) * 1.8;
-      t.punteggio = t.rilevanza / (1 + penalita);
-    });
-    compatibili.sort((a, b)=> b.punteggio - a.punteggio);
+    // Si parte dal MEDIA FIT, non da quante testate hanno più dati grezzi —
+    // è il principio esplicitamente richiesto per la sezione "opportunità
+    // migliori": mai le testate per cui abbiamo più dati, ma quelle più
+    // pertinenti per QUESTA azienda. Massimo 5, non un elenco lungo.
+    compatibili.sort((a, b)=> b.mediaFitScore - a.mediaFitScore);
+    const opportunita = compatibili.slice(0, 5);
 
-    // Compone il mix finale SENZA MAI superare budget*1.10 sul costo minimo
-    // complessivo, e senza forzare una selezione se nessuna combinazione
-    // affidabile rientra: "nessuna raccomandazione" è un esito valido
-    // quanto un piano completo (istruzioni del 9/9/2026, punti 4 e 5) — a
-    // differenza di prima, qui non c'è più nessun ripiego che aggiunge
-    // comunque le 2 testate più economiche o la prima disponibile fuori budget.
+    // Il piano di spesa vero è un sottoinsieme delle opportunità mostrate:
+    // solo quelle che raccomanderemmo davvero, entro il tetto di budget
+    // cumulativo. Mai forzato — un'opportunità "NON INVESTIREI" resta
+    // visibile per trasparenza ma non riceve mai un euro allocato.
     const tettoBudget = budget * BUDGET_TOLLERANZA;
     const selected = [];
     let spesoMin = 0;
-    for(const t of compatibili){
-      if(selected.length >= 6) break;
+    for(const t of opportunita){
+      if(t.raccomandazione === 'NON INVESTIREI') continue;
       if(spesoMin + t.est.totMin > tettoBudget) continue;
       selected.push(t);
       spesoMin += t.est.totMin;
     }
+    const escluseBudget = opportunita.filter(t => !selected.includes(t));
 
-    if(selected.length === 0) return { selected: [], escluseGeografiche };
-
-    const totaleRilevanza = selected.reduce((s, t)=> s + t.rilevanza, 0) || 1;
-    selected.forEach(t=>{ t.quota = Math.round(100 * t.rilevanza / totaleRilevanza * 10) / 10; });
-
-    // Affinità e motivazione: CALCOLATE da Taglio a partire da geo-
-    // compatibilità, budget e punteggio già pronti sopra — mai "Alta" per
-    // una testata geograficamente incompatibile, che qui però non può più
-    // nemmeno comparire (esclusa sopra). Non generate dall'AI (una chiamata
-    // AI per testata costerebbe inutilmente di più — vedi istruzioni del
-    // 9/9, "COSTI").
-    const puntggiOrdinati = [...selected].sort((a, b)=> b.punteggio - a.punteggio);
+    // Allocazione in EURO ARROTONDATI sul costo minimo stimato (mai il
+    // punto medio o massimo): prudente per definizione. La selezione sopra
+    // può restare entro budget*1.10 pur superando il budget "nudo" di
+    // qualche punto percentuale — nonAllocato resta un numero CON SEGNO
+    // apposta (mai troncato a 0), così un piano leggermente sopra budget lo
+    // dichiara onestamente invece di mostrare "€0 non allocati" come se
+    // combaciasse esattamente (bug trovato in test il 9/9/2026).
+    let nonAllocato = budget;
     selected.forEach(t=>{
-      const posizione = puntggiOrdinati.indexOf(t);
-      const frazione = selected.length > 1 ? posizione / (selected.length - 1) : 0;
-      t.affinita = frazione <= 0.33 ? 'Alta' : (frazione <= 0.66 ? 'Media' : 'Bassa');
-
-      const motivi = ['ha segnali pubblicitari osservati direttamente'];
-      if(t.zonaMatch) motivi.unshift('è la testata del territorio indicato');
-      else if(t.testataGeo.scope === 'NATIONAL') motivi.push('è una testata a diffusione nazionale, compatibile con qualunque zona');
-      const frazioneBudget = t.costMid / budget;
-      if(frazioneBudget <= 0.35) motivi.push('costo compatibile con il budget indicato senza assorbirne una quota eccessiva');
-      else motivi.push('richiede una parte consistente del budget indicato');
-      t.motivazione = motivi.join('; ') + '.';
+      t.euroAllocati = Math.round(t.est.totMin / 10) * 10;
+      nonAllocato -= t.euroAllocati;
     });
+    nonAllocato = Math.round(nonAllocato);
 
-    return { selected, escluseGeografiche };
+    return { opportunita, selected, escluseGeografiche, escluseBudget, nonAllocato };
   }
 
   function formatEuro(n){
@@ -1575,7 +1613,14 @@
       }, 700);
     });
 
-    const sectorKey = document.getElementById('sector').value;
+    // Il menu Settore ha un placeholder non selezionabile come prima opzione
+    // apposta: senza, il browser mostrava "Automotive" già selezionato e un
+    // utente che non lo toccava si vedeva analizzato come automotive anche
+    // vendendo tutt'altro (bug reale osservato — vedi istruzioni del
+    // 9/9/2026 sulla rifondazione dell'output). "" (nessuna scelta) ricade
+    // su "altro", MAI su un settore specifico indovinato.
+    const sectorKeyGrezzo = document.getElementById('sector').value;
+    const sectorKey = sectorKeyGrezzo || 'altro';
     const mockData = SETTORE_DATA[sectorKey] || SETTORE_DATA.altro;
     const name = document.getElementById('companyName').value.trim() || 'la tua azienda';
     const website = document.getElementById('website').value.trim();
@@ -1610,24 +1655,27 @@
     });
 
     const allocPromise = fetchAllocation(sectorKey);
+    const periodoKey = document.getElementById('period').value;
 
     const [, ideas, alloc] = await Promise.all([animation, ideasPromise, allocPromise]);
     fill.style.width = '100%';
     setTimeout(()=>{
-      // La zona esplicita dell'utente ha sempre priorità; solo se manca si
-      // usa il mercato dedotto dall'AI dal sito reale (e solo con
-      // confidenza sufficiente) — vedi determinaGeoAzienda e istruzioni del
-      // 9/9/2026 sulla correzione del ranking geografico.
-      const aziendaGeo = determinaGeoAzienda(zonaGeografica, ideas);
-      ultimoContestoRisultati = { sectorLabel: mockData.label, name, alloc, zonaGeografica };
-      renderRisultatiBase(mockData.label, name, alloc, aziendaGeo);
-      renderRisultatiAI(ideas, erroreAI, name);
+      ultimoContestoRisultati = {
+        sectorLabel: mockData.label, name, alloc, zonaGeografica, periodoKey,
+        budget: state.budget, competitors: state.competitors.slice(),
+      };
+      renderReport({ ...ultimoContestoRisultati, ideas, erroreAI });
     }, 300);
   }
 
   // Rifà solo la chiamata AI (i siti restano quelli già letti in
   // ultimoPayloadAnalisi) senza toccare consumaRicercaSeConsentito: la
   // ricerca è già stata autorizzata quando l'utente ha lanciato l'analisi.
+  // Ricalcola l'intero report (non solo le sezioni AI): se l'AI ora
+  // risponde con un mercato dedotto che al primo tentativo non avevamo, la
+  // geografia/il piano di budget vanno ricalcolati di conseguenza — prima
+  // di questo fix il piano restava quello del tentativo precedente anche
+  // dopo un retry riuscito.
   async function retryAnalisiAI(){
     if(!ultimoPayloadAnalisi || !ultimoContestoRisultati) return;
     const btn = document.getElementById('retryAiBtn');
@@ -1642,16 +1690,7 @@
       erroreAI = err.message || 'Errore imprevisto';
     }
     if(btn){ btn.disabled = false; btn.textContent = 'Riprova analisi AI'; }
-    renderRisultatiAI(ideas, erroreAI, ultimoContestoRisultati.name);
-    // Se la AI ora ha risposto (magari con un mercato dedotto dal sito che
-    // al primo tentativo non avevamo), l'allocazione va ricalcolata: prima
-    // di questo fix il piano restava quello (eventualmente UNKNOWN) del
-    // primo tentativo anche dopo un retry riuscito.
-    if(ideas){
-      const { sectorLabel, name, alloc, zonaGeografica } = ultimoContestoRisultati;
-      const aziendaGeo = determinaGeoAzienda(zonaGeografica, ideas);
-      renderRisultatiBase(sectorLabel, name, alloc, aziendaGeo);
-    }
+    renderReport({ ...ultimoContestoRisultati, ideas, erroreAI });
   }
   document.getElementById('retryAiBtn').addEventListener('click', retryAnalisiAI);
 
@@ -1681,256 +1720,345 @@
       })
     });
     if(!response.ok){
+      // "detail" di FastAPI può essere una stringa (i nostri errori gestiti,
+      // es. "chiave Anthropic mancante") o un ARRAY di oggetti di validazione
+      // Pydantic ({loc, msg, type}, es. se un campo supera un max_length):
+      // new Error(array) stringifica ogni oggetto come "[object Object]" —
+      // bug reale osservato in test pubblico (vedi istruzioni del 9/9/2026).
       let dettaglio = '';
-      try{ dettaglio = (await response.json()).detail || ''; } catch(e){}
+      try{
+        const corpo = (await response.json()).detail;
+        if(typeof corpo === 'string') dettaglio = corpo;
+        else if(Array.isArray(corpo)) dettaglio = corpo.map(e => (e && e.msg) ? e.msg : JSON.stringify(e)).join('; ');
+        else if(corpo) dettaglio = JSON.stringify(corpo);
+      } catch(e){}
       throw new Error(dettaglio || ('Errore backend: ' + response.status));
     }
     const parsed = await response.json();
-    if(!parsed.idea_sicura || !Array.isArray(parsed.idee_audaci)) throw new Error('Formato risposta inatteso');
-    if(!Array.isArray(parsed.consigli_su_misura)) parsed.consigli_su_misura = [];
+    if(!parsed.creativita || !parsed.creativita.consigliata || !parsed.creativita.consigliata.titolo) throw new Error('Formato risposta inatteso');
+    if(!parsed.azienda) parsed.azienda = {};
+    if(!parsed.competitor_confronto) parsed.competitor_confronto = { disponibile: false };
+    if(!parsed.messaggio_pubblicitario) parsed.messaggio_pubblicitario = {};
     parsed.sitoLettoDavvero = !!parsed.sito_letto_davvero;
     return parsed;
   }
 
-  const TIPO_CONSIGLIO_LABEL = {
-    FACT: 'Rilevato sul sito',
-    INFERENCE: 'Ipotesi Taglio',
-    SUGGESTION: 'Suggerimento AI'
-  };
+  // ---------- Report: dall'azienda alle testate, mai il contrario ----------
+  // Riscritto il 9/9/2026: prima il report partiva dalle testate/idee
+  // generiche; ora segue azienda -> competitor -> mercato -> opportunità ->
+  // strategia -> testate -> creatività -> azioni, e OGNI sezione gestisce da
+  // sola l'assenza di dati AI (mai un'intera vista nascosta, mai nome/
+  // competitor/settore/budget persi solo perché l'AI non ha risposto).
+  const STATO_LABEL = { RILEVATO: 'Rilevato', DEDUZIONE: 'Deduzione', NON_DETERMINABILE: 'Non determinabile' };
 
-  function renderRisultatiBase(sectorLabel, name, alloc, aziendaGeo){
-    document.getElementById('loadingView').style.display = 'none';
-    document.getElementById('resultsView').style.display = 'block';
+  function statoBadge(stato){
+    const cls = stato === 'RILEVATO' ? 'idea-tag sicura' : 'idea-tag';
+    const style = stato === 'NON_DETERMINABILE' ? ' style="opacity:.55;"' : '';
+    return `<span class="${cls}"${style}>${STATO_LABEL[stato] || stato}</span>`;
+  }
 
-    document.getElementById('resultsHeadline').textContent = 'Piano di posizionamento per ' + name;
-    document.getElementById('resultsIntro').textContent = state.competitors.length
-      ? `Basato sull'analisi di ${state.competitors.length} competitor e sui pattern del settore ${sectorLabel}, con budget di € ${state.budget.toLocaleString('it-IT')}.`
-      : `Nessun competitor indicato: piano basato sui benchmark del settore ${sectorLabel}, con budget di € ${state.budget.toLocaleString('it-IT')}.`;
+  function campoRiga(etichetta, campo){
+    const c = campo && campo.testo ? campo : { testo: '', stato: 'NON_DETERMINABILE' };
+    const corpo = c.testo ? escapeXml(c.testo) : 'Non determinabile dal sito.';
+    return `<div class="alloc-row" style="grid-template-columns:1fr;">
+      <div>
+        <span class="alloc-name" style="font-size:13px;">${escapeXml(etichetta)}</span> ${statoBadge(c.testo ? c.stato : 'NON_DETERMINABILE')}
+        <div class="alloc-format">${corpo}</div>
+      </div>
+    </div>`;
+  }
 
-    const datasetLineEl = document.getElementById('datasetStatusLine');
-    if(datasetLineEl) datasetLineEl.textContent = formattaRigaDatasetStatus();
-
-    const allocList = document.getElementById('allocList');
-    allocList.innerHTML = '';
-    const noteEl = document.getElementById('demoNote');
-
-    if(!alloc.disponibile){
-      allocList.innerHTML = '<p class="price-disclaimer">Dati sulle testate non disponibili in questo momento: il backend di rilevazione non risponde. Riprova più tardi.</p>';
-      noteEl.textContent = 'Nota: allocazione non disponibile perché i dati sulle testate non sono raggiungibili in questo momento.';
+  function renderSezioneAzienda(ideas, name, erroreAI){
+    document.getElementById('seccAziendaTitolo').textContent = `Quello che abbiamo capito di ${name}`;
+    const el = document.getElementById('aziendaBody');
+    if(!ideas){
+      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Non siamo riusciti a completare l'analisi AI questa volta${erroreAI ? ' (' + escapeXml(erroreAI) + ')' : ''}. Il nome azienda e gli altri dati che hai inserito restano qui: usa "Riprova analisi AI" qui sopra senza reinserire nulla.</p>`;
       return;
     }
+    const a = ideas.azienda || {};
+    const campi = [
+      ['Attività', a.attivita], ['Area di mercato', a.area_mercato],
+      ['Cliente probabile', a.cliente_probabile], ['Offerta/leva commerciale', a.leva_commerciale],
+      ['Call to action attuale', a.call_to_action],
+    ];
+    let html = campi.map(([etichetta, campo]) => campoRiga(etichetta, campo)).join('');
+    if(a.punti_distintivi && a.punti_distintivi.length){
+      html += `<div class="alloc-row" style="grid-template-columns:1fr;"><div>
+        <span class="alloc-name" style="font-size:13px;">Punti distintivi rilevati</span>
+        <ul class="consigli-list" style="margin-top:8px;">${a.punti_distintivi.map(p=>`<li>${escapeXml(p.testo)} ${statoBadge(p.stato)}</li>`).join('')}</ul>
+      </div></div>`;
+    }
+    el.innerHTML = html;
+  }
 
-    const periodoKey = document.getElementById('period').value;
-    let totMinSum = 0, totMaxSum = 0;
+  function renderSezioneCompetitor(ideas, competitorInseriti, erroreAI){
+    const nomeCompetitor = (competitorInseriti && competitorInseriti.length) ? competitorInseriti[0] : null;
+    document.getElementById('seccCompetitorTitolo').textContent = nomeCompetitor ? `Tu vs ${nomeCompetitor}` : 'Confronto competitor';
+    const el = document.getElementById('competitorBody');
 
-    const { selected: piano, escluseGeografiche } = buildAllocationPlan(alloc.osservate, state.budget, periodoKey, aziendaGeo);
-    // Fattori di ogni testata visibili in console per debug interno (mai
-    // mostrati in UI): geo-compatibilità, punteggio, rilevanza — vedi
-    // istruzioni del 9/9/2026, punto 3 ("mostra i singoli fattori").
-    console.debug('[Taglio] mercato azienda:', aziendaGeo, '— piano:', piano.map(t=>({nome:t.nome, scope:t.testataGeo.scope, regione:t.testataGeo.regione, zonaMatch:t.zonaMatch, rilevanza:t.rilevanza, punteggio:t.punteggio, affinita:t.affinita})), '— escluse geografiche:', escluseGeografiche.map(t=>({nome:t.nome, scope:t.testataGeo.scope, regione:t.testataGeo.regione})));
-
-    if(piano.length === 0){
-      const vuoto = document.createElement('div');
-      vuoto.className = 'price-disclaimer';
-      vuoto.textContent = 'Con i dati attualmente disponibili non abbiamo trovato una combinazione di testate sufficientemente coerente con la tua area geografica, il tuo obiettivo e il budget indicato. Preferiamo non suggerirti investimenti poco coerenti solo per completare il piano.';
-      allocList.appendChild(vuoto);
-
-      const pertinenti = (aziendaGeo.scope === 'REGIONAL' || aziendaGeo.scope === 'LOCAL')
-        ? (alloc.nonDisponibili || []).filter(nome => geoCompatibile(classificaGeoTestata(nome), aziendaGeo) && classificaGeoTestata(nome).scope !== 'NATIONAL')
-        : [];
-      if(pertinenti.length){
-        const pertEl = document.createElement('div');
-        pertEl.className = 'price-disclaimer';
-        pertEl.style.marginTop = '10px';
-        pertEl.innerHTML = `<strong>Testate potenzialmente pertinenti — dati insufficienti:</strong> ${pertinenti.map(escapeXml).join(', ')}.`;
-        allocList.appendChild(pertEl);
-      }
-      if(escluseGeografiche.length){
-        const escEl = document.createElement('div');
-        escEl.className = 'price-disclaimer';
-        escEl.style.marginTop = '10px';
-        escEl.textContent = `${escluseGeografiche.length} testate con dati reali sono state escluse perché fuori dalla tua area geografica.`;
-        allocList.appendChild(escEl);
-      }
-      noteEl.textContent = 'Nota: nessuna testata raccomandata in questo caso — meglio nessun piano che un piano poco coerente.';
+    if(!nomeCompetitor){
+      el.innerHTML = '<p class="step-intro" style="margin-bottom:0;">Non hai indicato un competitor: aggiungine uno nel wizard per un confronto diretto.</p>';
       return;
     }
+    if(!ideas){
+      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Confronto con ${escapeXml(nomeCompetitor)} non disponibile: l'analisi AI non è riuscita questa volta${erroreAI ? ' (' + escapeXml(erroreAI) + ')' : ''}. Il competitor indicato resta salvato — riprova l'analisi AI qui sopra.</p>`;
+      return;
+    }
+    const cc = ideas.competitor_confronto || { disponibile: false };
+    if(!cc.disponibile){
+      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Confronto competitor non disponibile: non siamo riusciti a leggere un contenuto reale dal sito di ${escapeXml(nomeCompetitor)}.</p>`;
+      return;
+    }
+    const lista = (titolo, arr) => (arr && arr.length)
+      ? `<div style="margin-bottom:14px;"><div class="alloc-name" style="font-size:13px;margin-bottom:6px;">${escapeXml(titolo)}</div><ul class="consigli-list">${arr.map(x=>`<li>${escapeXml(x)}</li>`).join('')}</ul></div>`
+      : '';
+    el.innerHTML = lista('Tu comunichi meglio', cc.tu_comunichi_meglio) +
+      lista(`${nomeCompetitor} comunica meglio`, cc.competitor_comunica_meglio) +
+      lista('Opportunità che vediamo', cc.opportunita) +
+      (cc.messaggio_da_possedere ? `<p class="step-intro" style="margin-bottom:0;"><strong>Messaggio che potresti possedere:</strong> ${escapeXml(cc.messaggio_da_possedere)}</p>` : '');
+  }
 
-    piano.forEach(t=>{
-      const est = t.est;
-      totMinSum += est.totMin;
-      totMaxSum += est.totMax;
+  function descrizioneMercato(aziendaGeo){
+    if(aziendaGeo.scope === 'LOCAL' || aziendaGeo.scope === 'REGIONAL'){
+      const territorio = aziendaGeo.regioneCanonica || aziendaGeo.regioneTesto;
+      return `un'attività ${aziendaGeo.scope === 'LOCAL' ? 'locale' : 'regionale'}${territorio ? ' in ' + escapeXml(territorio) : ''}`;
+    }
+    if(aziendaGeo.scope === 'NATIONAL') return 'un\'attività a diffusione nazionale';
+    return 'un\'attività di cui non conosciamo ancora il raggio geografico';
+  }
 
-      const campagnaBadge = (t.campagna && t.campagna.giorni_consecutivi >= 2)
-        ? `<div class="alloc-campaign">Campagna in corso da ${t.campagna.giorni_consecutivi} giorni</div>`
-        : '';
-      const zonaBadge = t.zonaMatch
-        ? `<div class="alloc-campaign" style="border-color:var(--cyan);color:var(--cyan-strong);">Testata del territorio indicato</div>`
-        : '';
+  function renderSezioneVerdetto(piano, aziendaGeo, budget, datiDisponibili){
+    const el = document.getElementById('verdettoBody');
+    if(!datiDisponibili){
+      el.innerHTML = '<p class="step-intro" style="margin-bottom:0;">Non possiamo darti un verdetto affidabile in questo momento: i dati sulle testate non sono raggiungibili. Riprova più tardi.</p>';
+      return;
+    }
+    const localeText = descrizioneMercato(aziendaGeo);
+    if(!piano || piano.selected.length === 0){
+      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Con i dati disponibili oggi non investirei i € ${budget.toLocaleString('it-IT')} nelle testate che possiamo verificare: per ${localeText}, le opportunità osservate non sono abbastanza coerenti con il mercato o con il budget indicato. Preferiamo dirtelo chiaramente piuttosto che proporti una spesa poco giustificata.</p>`;
+      return;
+    }
+    const nomi = piano.selected.map(t => `<strong>${escapeXml(t.nome)}</strong>`);
+    const elencoNomi = nomi.length === 1 ? nomi[0] : nomi.slice(0, -1).join(', ') + ' e ' + nomi[nomi.length - 1];
+    el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Con € ${budget.toLocaleString('it-IT')} e ${localeText}, eviterei di disperdere il budget su testate poco mirate. Concentrerei la spesa su ${elencoNomi} — ${nomi.length === 1 ? 'è la testata' : 'sono le testate'} più coerenti tra quelle che possiamo verificare oggi.</p>`;
+  }
 
-      const posizionamentoLine = t.posizionamento
-        ? `Posizionamento osservato: ${t.posizionamento.zona} — meno inserzionisti rilevati lì (${t.posizionamento.inserzionisti_rilevati_qui}) rispetto al resto della pagina`
-        : 'Posizionamento osservato: dato non disponibile';
+  function renderSezioneNonSpenderei(piano){
+    const sec = document.getElementById('seccNonSpenderei');
+    const el = document.getElementById('nonSpendereiBody');
+    const voci = [];
+    if(piano){
+      piano.escluseGeografiche.slice(0, 2).forEach(t=>{
+        voci.push({ titolo: t.nome, motivo: `pubblico geograficamente non coerente (${t.testataGeo.regione}, la tua attività opera altrove).` });
+      });
+      piano.escluseBudget.slice(0, 2).forEach(t=>{
+        voci.push({ titolo: t.nome, motivo: t.compatibilitaBudget === 'Fuori budget' ? 'costo stimato troppo elevato rispetto al budget indicato.' : 'assorbirebbe una quota troppo grande del budget rispetto al beneficio atteso.' });
+      });
+    }
+    if(voci.length === 0){ sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    el.innerHTML = voci.slice(0, 3).map(v => `<p class="price-disclaimer" style="margin-top:8px;">❌ <strong>${escapeXml(v.titolo)}</strong><br>Motivo: ${escapeXml(v.motivo)}</p>`).join('');
+  }
 
-      const ultimaRilevazioneLine = t.ultimaOsservazione
-        ? `Ultima rilevazione: ${new Date(t.ultimaOsservazione).toLocaleDateString('it-IT')}`
-        : 'Ultima rilevazione: dato non disponibile';
-
-      const affinitaLine = t.affinita
-        ? `Affinità con la tua attività: <strong>${t.affinita}</strong>`
-        : '';
-
-      // Contatto commerciale: preferisci il link trovato davvero dallo
-      // scraper sul sito della testata (dato reale, non inventato); se
-      // manca, manda comunque l'utente sul sito reale della testata a
-      // cercare "Pubblicità" — mai un numero/mail indovinati (vedi README).
+  function renderSezioneOpportunita(piano){
+    const sec = document.getElementById('seccOpportunita');
+    const el = document.getElementById('opportunitaBody');
+    if(!piano || piano.opportunita.length === 0){ sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    const badgeClasse = r => r === 'INVESTIREI' ? 'idea-tag sicura' : (r === 'NON INVESTIREI' ? 'idea-tag' : 'idea-tag audace');
+    el.innerHTML = piano.opportunita.map(t=>{
       const contattoHref = t.contattoUrl || homepageFromNome(t.nome);
       const contattoLabel = t.contattoUrl ? 'Contatti pubblicitari →' : 'Vai al sito e cerca "Pubblicità" →';
       const contattoLine = contattoHref
         ? `<a class="alloc-contatto" href="${escapeXml(contattoHref)}" target="_blank" rel="noopener noreferrer">${contattoLabel}</a>`
         : '';
-
-      const row = document.createElement('div');
-      row.className = 'alloc-row';
-      row.innerHTML = `
-        <div>
-          <div class="alloc-name">${t.nome}</div>
-          <div class="alloc-format">${t.formato ? 'Formato osservato: ' + t.formato : 'Formato osservato: dato non disponibile'}</div>
-          ${campagnaBadge}
-          ${zonaBadge}
-        </div>
-        <div class="alloc-track"><div class="alloc-fill" style="width:${t.quota}%"></div></div>
-        <div class="alloc-pct">${t.quota}%</div>
-        <div class="alloc-price" title="Stima Taglio — non è un listino ufficiale della testata.">Costo indicativo stimato: ${formatEuro(est.totMin)} – ${formatEuro(est.totMax)} per il periodo (${formatEuro(est.perUscitaMin)}–${formatEuro(est.perUscitaMax)} ${est.unit}) · Stima Taglio, non listino ufficiale</div>
-        <div class="alloc-posizionamento">${posizionamentoLine}</div>
-        <div class="alloc-posizionamento">${ultimaRilevazioneLine}</div>
-        ${affinitaLine ? `<div class="alloc-posizionamento">${affinitaLine}</div>` : ''}
-        ${t.motivazione ? `<div class="alloc-posizionamento">Perché te la consigliamo: ${t.motivazione}</div>` : ''}
-        ${contattoLine ? `<div class="alloc-contatto-row">${contattoLine}</div>` : ''}
-      `;
-      allocList.appendChild(row);
-    });
-
-    const summaryEl = document.createElement('div');
-    summaryEl.className = 'price-summary';
-    const overBudget = totMinSum > state.budget;
-    summaryEl.innerHTML = `
-      <span>Totale indicativo stimato per il piano</span>
-      <strong>${formatEuro(totMinSum)} – ${formatEuro(totMaxSum)}</strong>
-    `;
-    allocList.prepend(summaryEl);
-
-    const priceDisclaimer = document.createElement('div');
-    priceDisclaimer.className = 'price-disclaimer';
-    priceDisclaimer.textContent = overBudget
-      ? `Attenzione: la stima minima supera il budget indicato di € ${state.budget.toLocaleString('it-IT')}. Valuta di ridurre il numero di testate o le uscite.`
-      : 'Stima Taglio — non è un listino ufficiale della testata. Verifica sempre con la concessionaria prima di allocare il budget.';
-    allocList.appendChild(priceDisclaimer);
-
-    if(alloc.nonDisponibili && alloc.nonDisponibili.length){
-      // Se conosciamo la zona dell'azienda, separiamo le testate senza dati
-      // che sarebbero comunque del territorio giusto ("potenzialmente
-      // pertinenti") dal resto — mai inventando formato/costo per loro,
-      // solo segnalando che meriterebbero una rilevazione futura.
-      const isLocaleORegionale = aziendaGeo.scope === 'REGIONAL' || aziendaGeo.scope === 'LOCAL';
-      const pertinenti = isLocaleORegionale
-        ? alloc.nonDisponibili.filter(nome => { const g = classificaGeoTestata(nome); return g.scope !== 'NATIONAL' && geoCompatibile(g, aziendaGeo); })
-        : [];
-      const altre = alloc.nonDisponibili.filter(nome => !pertinenti.includes(nome));
-
-      if(pertinenti.length){
-        const pertEl = document.createElement('div');
-        pertEl.className = 'price-disclaimer';
-        pertEl.style.marginTop = '14px';
-        pertEl.innerHTML = `<strong>Testate potenzialmente pertinenti — dati insufficienti:</strong> ${pertinenti.map(escapeXml).join(', ')}.`;
-        allocList.appendChild(pertEl);
-      }
-      if(altre.length){
-        const nonDispEl = document.createElement('div');
-        nonDispEl.className = 'price-disclaimer';
-        nonDispEl.style.marginTop = '14px';
-        nonDispEl.innerHTML = `<strong>Altre testate monitorate, dati non ancora disponibili:</strong> ${altre.map(escapeXml).join(', ')}.`;
-        allocList.appendChild(nonDispEl);
-      }
-    }
-
-    noteEl.textContent = 'Nota: l\'allocazione per testata arriva dai dati rilevati dallo scraping; le testate senza rilevazioni sono elencate separatamente, senza dati inventati.';
+      const perche = t.zonaMatch
+        ? 'È la testata del tuo territorio, con dati osservati direttamente.'
+        : (t.testataGeo.scope === 'NATIONAL' ? 'Diffusione nazionale: compatibile indipendentemente dalla zona.' : 'Coerente con il mercato indicato.');
+      const compatBudgetLabel = t.compatibilitaBudget === 'Fuori budget' ? 'Bassa' : t.compatibilitaBudget;
+      return `
+        <div class="alloc-row">
+          <div>
+            <div class="alloc-name">${escapeXml(t.nome)}</div>
+            <div class="${badgeClasse(t.raccomandazione)}" style="margin-top:4px;display:inline-block;">${t.raccomandazione}</div>
+          </div>
+          <div></div><div></div>
+          <div class="alloc-posizionamento">${escapeXml(perche)}</div>
+          <div class="alloc-format">Coerenza geografica: ${t.coerenzaGeografica} · Coerenza target: Non determinabile · Compatibilità budget: ${compatBudgetLabel} · Dati disponibili: ${t.datiDisponibili}</div>
+          <div class="alloc-format">${t.formato ? 'Formato osservato: ' + escapeXml(t.formato) : 'Formato osservato: dato non disponibile'} · ${t.ultimaOsservazione ? 'ultima rilevazione ' + new Date(t.ultimaOsservazione).toLocaleDateString('it-IT') : 'ultima rilevazione non disponibile'}</div>
+          <div class="alloc-price" title="Stima Taglio — non è un listino ufficiale della testata.">Costo indicativo: ${formatEuro(t.est.totMin)} – ${formatEuro(t.est.totMax)} per il periodo · Stima Taglio, non listino ufficiale</div>
+          ${contattoLine ? `<div class="alloc-contatto-row">${contattoLine}</div>` : ''}
+        </div>`;
+    }).join('');
   }
 
-  function renderRisultatiAI(ideas, erroreAI, name){
-    const unavailablePanel = document.getElementById('aiUnavailablePanel');
-    const strategyBlock = document.getElementById('strategyBlock');
-    const ideeBlock = document.getElementById('ideeBlock');
+  function renderSezionePertinenti(alloc, aziendaGeo){
+    const sec = document.getElementById('seccPertinentiSenzaDati');
+    const el = document.getElementById('pertinentiSenzaDatiBody');
+    const vincoloGeografico = aziendaGeo.scope === 'REGIONAL' || aziendaGeo.scope === 'LOCAL';
+    const pertinenti = (alloc.disponibile && vincoloGeografico)
+      ? (alloc.nonDisponibili || []).filter(nome => { const g = classificaGeoTestata(nome); return g.scope !== 'NATIONAL' && geoCompatibile(g, aziendaGeo); })
+      : [];
+    if(pertinenti.length === 0){ sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    el.innerHTML = `<p class="step-intro" style="margin-bottom:10px;">Potenzialmente interessante, ma non abbiamo dati sufficienti per consigliarti di investirci oggi:</p>` +
+      pertinenti.map(nome => `<p class="price-disclaimer" style="margin-top:6px;"><strong>${escapeXml(nome)}</strong></p>`).join('');
+  }
 
+  function renderSezioneBudget(piano, budget){
+    const sec = document.getElementById('seccBudgetAllocazione');
+    const el = document.getElementById('budgetAllocazioneBody');
+    if(!piano || piano.selected.length === 0){ sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    let html = `<div class="price-summary"><span>Il tuo budget</span><strong>${formatEuro(budget)}</strong></div>`;
+    html += piano.selected.map(t => `<div class="price-summary" style="background:none;padding:8px 16px;"><span>${escapeXml(t.nome)}</span><strong>${formatEuro(t.euroAllocati)}</strong></div>`).join('');
+    if(piano.nonAllocato > 0){
+      html += `<div class="price-summary" style="background:none;padding:8px 16px;"><span>Non allocati</span><strong>${formatEuro(piano.nonAllocato)}</strong></div>`;
+      html += `<p class="price-disclaimer">Motivo: preferiamo lasciare questa parte del budget non allocata piuttosto che inserirla in una testata poco coerente.</p>`;
+    } else if(piano.nonAllocato < 0){
+      // Il piano può restare entro il margine del 10% (BUDGET_TOLLERANZA)
+      // pur superando il budget "nudo" — va dichiarato, mai nascosto
+      // mostrando "€0 non allocati" come se combaciasse esattamente.
+      html += `<p class="price-disclaimer">Attenzione: questa combinazione supera il budget indicato di ${formatEuro(-piano.nonAllocato)}, restando comunque entro il margine del 10% che consideriamo accettabile. Stima Taglio sul costo minimo, non un listino ufficiale.</p>`;
+    } else {
+      html += `<p class="price-disclaimer">Stima Taglio sul costo minimo — non è un listino ufficiale delle testate.</p>`;
+    }
+    el.innerHTML = html;
+  }
+
+  function renderSezioneMessaggio(ideas, erroreAI){
+    const el = document.getElementById('messaggioBody');
     if(!ideas){
-      unavailablePanel.style.display = '';
-      strategyBlock.style.display = 'none';
-      ideeBlock.style.display = 'none';
-      const errEl = document.getElementById('aiRetryError');
-      if(errEl){
-        if(erroreAI){ errEl.textContent = erroreAI; errEl.hidden = false; }
-        else { errEl.hidden = true; }
-      }
+      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Messaggio pubblicitario non disponibile: l'analisi AI non è riuscita questa volta${erroreAI ? ' (' + escapeXml(erroreAI) + ')' : ''}. Riprova dal pulsante qui sopra.</p>`;
       return;
     }
-
-    unavailablePanel.style.display = 'none';
-    ideeBlock.style.display = '';
-
-    const consigli = ideas.consigli_su_misura || [];
-    if(consigli.length){
-      strategyBlock.style.display = '';
-      document.getElementById('strategyCaption').textContent = ideas.sitoLettoDavvero
-        ? 'Basati sul contenuto reale letto dal sito indicato (azienda e/o competitor), non solo su ipotesi di settore.'
-        : 'Nessun sito analizzabile: ipotesi di lavoro dedotte da settore, prodotto, zona e target indicati — da validare, non fatti verificati.';
-      const analisiEl = document.getElementById('analisiAziendaText');
-      analisiEl.textContent = ideas.analisi_azienda || '';
-      analisiEl.style.display = ideas.analisi_azienda ? '' : 'none';
-      document.getElementById('consigliList').innerHTML = consigli.map(c=>{
-        const testo = (typeof c === 'string') ? c : (c.testo || '');
-        const tipo = (typeof c === 'object' && c.tipo) ? c.tipo : 'INFERENCE';
-        const label = TIPO_CONSIGLIO_LABEL[tipo] || TIPO_CONSIGLIO_LABEL.INFERENCE;
-        return `<li>${escapeXml(testo)} <span class="alloc-caption" style="display:inline;">(${label})</span></li>`;
-      }).join('');
-    } else {
-      strategyBlock.style.display = 'none';
+    const m = ideas.messaggio_pubblicitario || {};
+    if(!m.headline && !m.cta){
+      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Non abbiamo abbastanza materiale reale per proporre un messaggio specifico.</p>`;
+      return;
     }
-
-    const sic = ideas.idea_sicura;
-    document.getElementById('ideaSicura').innerHTML = `
+    el.innerHTML = `
       <div class="idea-card">
-        <div class="idea-top">
-          <div class="idea-title">${sic.titolo}</div>
-          <div class="idea-tag sicura">Sicura</div>
-        </div>
-        <div class="idea-mech">Meccanismo: ${sic.meccanismo}</div>
-        <div class="idea-why">${sic.perche}</div>
-      </div>
-    `;
-    renderMockup(document.getElementById('ideaSicura'), sic, name, '#0077C2', 'sic');
+        ${m.headline ? `<div class="idea-title">${escapeXml(m.headline)}</div>` : ''}
+        ${m.sottoheadline ? `<div class="idea-why">${escapeXml(m.sottoheadline)}</div>` : ''}
+        ${m.cta ? `<div class="idea-mech">CTA: ${escapeXml(m.cta)}</div>` : ''}
+        ${m.argomento_principale ? `<div class="idea-mech">Argomento principale: ${escapeXml(m.argomento_principale)}</div>` : ''}
+        ${m.prova_fatto ? `<div class="idea-mech">Prova/fatto usato: ${escapeXml(m.prova_fatto)}</div>` : ''}
+      </div>`;
+  }
 
-    const audContainer = document.getElementById('ideeAudaci');
-    audContainer.innerHTML = '';
-    ideas.idee_audaci.forEach((a, i)=>{
+  function renderSezioneCreativita(ideas, name, erroreAI){
+    const el = document.getElementById('creativitaBody');
+    el.innerHTML = '';
+    if(!ideas){
+      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Creatività non disponibile: l'analisi AI non è riuscita questa volta${erroreAI ? ' (' + escapeXml(erroreAI) + ')' : ''}.</p>`;
+      return;
+    }
+    const c = ideas.creativita || {};
+    const livelli = [['consigliata', 'Consigliata', 'sicura'], ['alternativa', 'Alternativa', ''], ['audace', 'Audace', 'audace']];
+    livelli.forEach(([chiave, etichetta, tagClasse])=>{
+      const idea = c[chiave];
+      if(!idea || !idea.titolo) return;
       const card = document.createElement('div');
-      card.className = 'idea-card audace';
+      card.className = 'idea-card' + (tagClasse === 'audace' ? ' audace' : '');
       card.innerHTML = `
         <div class="idea-top">
-          <div class="idea-title">${a.titolo}</div>
-          <div class="idea-tag audace">Audace</div>
+          <div class="idea-title">${escapeXml(idea.titolo)}</div>
+          <div class="idea-tag ${tagClasse}">${etichetta}</div>
         </div>
-        <div class="idea-mech">Meccanismo: ${a.meccanismo}</div>
-        <div class="idea-why">${a.perche}</div>
-        <div class="novelty">
-          <div class="novelty-track"><div class="novelty-fill" style="width:${a.novita}%"></div></div>
-          <div class="novelty-label">${a.novita}/100 novità</div>
-        </div>
-        <div class="idea-risk">Rischio: ${a.rischio}</div>
+        ${idea.perche ? `<div class="idea-why">${escapeXml(idea.perche)}</div>` : ''}
+        ${idea.dove ? `<div class="idea-mech">Dove: ${escapeXml(idea.dove)}</div>` : ''}
+        ${idea.messaggio ? `<div class="idea-mech">Messaggio: ${escapeXml(idea.messaggio)}</div>` : ''}
+        ${idea.rischio ? `<div class="idea-risk">Rischio: ${escapeXml(idea.rischio)}</div>` : ''}
       `;
-      audContainer.appendChild(card);
-      renderMockup(card, a, name, '#C2006B', 'aud' + i);
+      el.appendChild(card);
+      renderMockup(card, { titolo: idea.titolo, meccanismo: idea.messaggio || idea.perche || '' }, name, tagClasse === 'audace' ? '#C2006B' : '#0077C2', chiave);
     });
   }
+
+  function renderSezioneAzioni(piano, ideas){
+    const el = document.getElementById('azioniBody');
+    const azioni = [];
+    if(piano && piano.selected.length){
+      azioni.push(`Chiedi un preventivo pubblicitario a <strong>${escapeXml(piano.selected[0].nome)}</strong>.`);
+    } else {
+      azioni.push('Aspetta nuovi dati sulle testate del tuo territorio prima di allocare budget, o valuta di alzare il budget indicato.');
+    }
+    const ideaConsigliata = ideas && ideas.creativita && ideas.creativita.consigliata;
+    if(ideaConsigliata && ideaConsigliata.titolo){
+      azioni.push(`Prepara una creatività centrata su "${escapeXml(ideaConsigliata.titolo)}".`);
+    } else {
+      azioni.push('Prepara una creatività chiara sul tuo prodotto/servizio principale, con una call to action diretta.');
+    }
+    const cta = ideas && ideas.messaggio_pubblicitario && ideas.messaggio_pubblicitario.cta;
+    azioni.push(cta
+      ? `Misura le richieste ricevute con la call to action "${escapeXml(cta)}".`
+      : 'Misura le richieste ricevute (telefonate, form, codice) per capire se la testata scelta funziona.');
+    el.innerHTML = `<ol class="consigli-list" style="list-style:decimal;padding-left:20px;">${azioni.slice(0, 3).map(a=>`<li>${a}</li>`).join('')}</ol>`;
+  }
+
+  function renderSezioneRetention(){
+    const el = document.getElementById('retentionBody');
+    el.innerHTML = `<ul class="consigli-list">
+      <li>Nuove rilevazioni sulle testate pertinenti al tuo mercato.</li>
+      <li>Cambiamenti nei formati pubblicitari osservati.</li>
+      <li>Nuove opportunità compatibili con il tuo budget.</li>
+      <li>Aggiornamenti che potrebbero modificare questo piano.</li>
+      <li>Una nuova analisi ogni volta che cambi azienda, competitor o dati.</li>
+    </ul>
+    <p class="alloc-caption" style="margin-top:10px;">Non devi rifare ogni volta la ricerca: Taglio continua a rivalutare le opportunità.</p>`;
+  }
+
+  // Orchestratore unico: popola TUTTE le sezioni in un solo passaggio,
+  // nell'ordine azienda -> competitor -> mercato/verdetto -> non spenderei
+  // -> opportunità -> pertinenti senza dati -> budget -> messaggio ->
+  // creatività -> azioni -> retention. Le sezioni che dipendono dall'AI
+  // degradano da sole se ideas è null; quelle deterministiche (geografia,
+  // budget) restano sempre valide, con o senza AI (istruzioni 9/9/2026,
+  // "PRIMA: correggere i bug emersi").
+  function renderReport(ctx){
+    document.getElementById('loadingView').style.display = 'none';
+    document.getElementById('resultsView').style.display = 'block';
+
+    document.getElementById('resultsHeadline').textContent = 'Il tuo piano di posizionamento';
+    document.getElementById('resultsIntro').textContent = `Analisi per ${ctx.name}, settore ${ctx.sectorLabel}, budget € ${ctx.budget.toLocaleString('it-IT')}.`;
+
+    const datasetLineEl = document.getElementById('datasetStatusLine');
+    if(datasetLineEl) datasetLineEl.textContent = formattaRigaDatasetStatus();
+
+    const unavailablePanel = document.getElementById('aiUnavailablePanel');
+    if(!ctx.ideas){
+      unavailablePanel.style.display = '';
+      document.getElementById('aiUnavailableText').textContent = 'Analisi AI non disponibile in questo momento. I dati sulle testate e il piano di budget restano affidabili qui sotto.';
+      const errEl = document.getElementById('aiRetryError');
+      if(ctx.erroreAI){ errEl.textContent = ctx.erroreAI; errEl.hidden = false; } else { errEl.hidden = true; }
+    } else {
+      unavailablePanel.style.display = 'none';
+    }
+
+    const aziendaGeo = determinaGeoAzienda(ctx.zonaGeografica, ctx.ideas);
+    const piano = ctx.alloc.disponibile ? buildAllocationPlan(ctx.alloc.osservate, ctx.budget, ctx.periodoKey, aziendaGeo) : null;
+    console.debug('[Taglio] report:', { aziendaGeo, piano });
+
+    renderSezioneAzienda(ctx.ideas, ctx.name, ctx.erroreAI);
+    renderSezioneCompetitor(ctx.ideas, ctx.competitors, ctx.erroreAI);
+    renderSezioneVerdetto(piano, aziendaGeo, ctx.budget, ctx.alloc.disponibile);
+    renderSezioneNonSpenderei(piano);
+    renderSezioneOpportunita(piano);
+    renderSezionePertinenti(ctx.alloc, aziendaGeo);
+    renderSezioneBudget(piano, ctx.budget);
+    renderSezioneMessaggio(ctx.ideas, ctx.erroreAI);
+    renderSezioneCreativita(ctx.ideas, ctx.name, ctx.erroreAI);
+    renderSezioneAzioni(piano, ctx.ideas);
+    renderSezioneRetention();
+
+    document.getElementById('demoNote').textContent = ctx.alloc.disponibile
+      ? 'Nota: dati sulle testate rilevati dallo scraping, analisi AI generata in tempo reale dal backend — nessun dato mock.'
+      : 'Nota: dati sulle testate non disponibili in questo momento (backend non raggiungibile).';
+
+    return { aziendaGeo, piano };
+  }
+
 </script>
 
 </body>

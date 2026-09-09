@@ -486,7 +486,7 @@ def _truncate(s: str, n: int) -> str:
     return (s or "")[:n]
 
 
-def _build_analysis_prompt(payload: GenerateAnalysisRequest) -> tuple[str, bool]:
+def _build_analysis_prompt(payload: GenerateAnalysisRequest) -> tuple[str, bool, bool]:
     sito_block = ""
     if payload.sito_azienda and payload.sito_azienda.testo:
         sito_block = (
@@ -504,60 +504,72 @@ def _build_analysis_prompt(payload: GenerateAnalysisRequest) -> tuple[str, bool]
         ]
         competitor_block = "\n" + "\n\n".join(parti) + "\n"
 
-    ha_sito_reale = bool(sito_block or competitor_block)
+    ha_sito_reale = bool(sito_block)
+    ha_competitor_reale = bool(competitor_block)
 
     if ha_sito_reale:
         istruzioni_fonte = (
-            "Hai contenuto REALE letto da almeno un sito (azienda e/o competitor) qui sopra: usalo come "
-            "base primaria del ragionamento. Ogni consiglio che deriva da qualcosa scritto davvero su quel "
-            "sito va etichettato \"FACT\". Un consiglio dedotto ragionevolmente ma non scritto esplicitamente "
-            "va etichettato \"INFERENCE\". Una proposta strategica/creativa tua va etichettata \"SUGGESTION\"."
+            "Hai contenuto REALE letto dal sito dell'azienda: usalo come base primaria per il profilo "
+            "azienda. Per ogni campo del profilo indica \"stato\": \"RILEVATO\" se è scritto esplicitamente "
+            "sul sito, \"DEDUZIONE\" se è una deduzione ragionevole ma non dichiarata esplicitamente, "
+            "\"NON_DETERMINABILE\" se non hai abbastanza elementi — in quel caso lascia \"testo\" vuoto o "
+            "con una frase che dichiara l'assenza del dato, MAI un'invenzione."
         )
     else:
         istruzioni_fonte = (
-            "Non hai contenuto reale di nessun sito (non indicato, non raggiungibile, o generato via "
-            "JavaScript e quindi illeggibile): dichiaralo nell'analisi invece di far finta di sapere cose "
-            "che non sai. In questo caso ogni consiglio è per forza \"INFERENCE\" (dedotto da settore/"
-            "prodotto/zona/target) o \"SUGGESTION\" — non puoi avere nessun \"FACT\" senza un sito letto davvero."
+            "NON hai contenuto reale del sito dell'azienda (non indicato, non raggiungibile, o generato via "
+            "JavaScript quindi illeggibile). Ogni campo del profilo azienda deve avere \"stato\": "
+            "\"NON_DETERMINABILE\" con \"testo\" vuoto, tranne al massimo un campo dedotto SOLO da settore/"
+            "prodotto/zona indicati esplicitamente dall'utente nel wizard (in quel caso \"stato\": "
+            "\"DEDUZIONE\"). Non inventare mai un'attività, un'area di mercato o un cliente che non hai modo "
+            "di sapere."
         )
 
-    prompt = f"""Sei un consulente di marketing che aiuta una PMI a fare pubblicità su giornali e riviste italiane (carta e digitale editoriale), con un occhio di riguardo per aziende con budget limitato.
+    prompt = f"""Sei il consulente pubblicitario AI di Taglio: aiuti una PMI italiana a decidere se e dove fare pubblicità su giornali e riviste (carta e digitale editoriale), con budget spesso limitato. Il tuo lavoro non è generare idee generiche di settore: è dimostrare che hai letto DAVVERO il sito di questa azienda specifica e, se c'è, del suo competitor.
 
 Dati azienda:
 Nome: {payload.name}
 Sito web: {payload.website or 'non indicato'}
-Prodotto o servizio specifico: {payload.prodotto or 'non indicato, ragiona sul settore in generale'}
-Zona geografica: {payload.zona_geografica or 'non indicata, presumi rilevanza nazionale'}
-Target di clientela: {payload.target_cliente or 'non indicato'}
-Settore: {payload.sector_label}
+Prodotto o servizio specifico: {payload.prodotto or 'non indicato'}
+Zona geografica dichiarata dall'utente: {payload.zona_geografica or 'non indicata — deducila dal sito se possibile'}
+Target di clientela dichiarato: {payload.target_cliente or 'non indicato'}
+Settore scelto nel wizard: {payload.sector_label}
 Tono di marca: {payload.tone or 'non specificato'}
-Competitor noti: {', '.join(payload.competitors) if payload.competitors else 'nessuno indicato, usa benchmark di settore'}
+Competitor indicati: {', '.join(payload.competitors) if payload.competitors else 'nessuno'}
 Budget indicativo: € {payload.budget}
 Obiettivo campagna: {payload.obiettivo or 'non indicato'}
 {sito_block}{competitor_block}
 {istruzioni_fonte}
 
-REGOLA FONDAMENTALE: non inventare mai clienti, recensioni, fatturato, audience, diffusione, CPM, prezzi ufficiali, certificazioni, partnership, risultati di campagne, o dati demografici che non hai. Se qualcosa non è rilevabile dai dati disponibili, scrivi esplicitamente "non rilevato dal sito" o "non determinabile con i dati disponibili" invece di inventarlo.
+REGOLA FONDAMENTALE, vale per OGNI sezione: non inventare mai clienti, recensioni, fatturato, audience, diffusione, CPM, prezzi ufficiali, certificazioni, partnership, sconti, anni di garanzia, numero di clienti, percentuali di risparmio o risultati di campagne. Se un dato non è rilevabile, dichiaralo esplicitamente invece di inventarlo — una risposta onestamente incompleta vale più di una completa ma inventata.
 
-Determina anche il raggio d'azione geografico REALE dell'azienda (serve al motore di allocazione budget, non solo come testo):
-- "market_scope": "LOCAL" (una sola città/provincia), "REGIONAL" (una regione), "NATIONAL" (tutta Italia), o "UNKNOWN" se non determinabile
-- "market_region": il nome della regione italiana se LOCAL o REGIONAL (es. "Lombardia"), altrimenti null
-- "market_confidence": "HIGH" se il sito lo dichiara esplicitamente (es. zona di consegna/intervento, sede operativa, "serviamo la provincia di..."), "MEDIUM" se dedotto ragionevolmente ma non dichiarato esplicitamente, "LOW" se è solo un'ipotesi debole. Senza contenuto reale di un sito, o se il sito non dà indizi geografici, usa "UNKNOWN"/null/"LOW" — non indovinare.
+Determina il raggio d'azione geografico REALE dell'azienda (alimenta un algoritmo di allocazione budget, non è solo testo):
+- "market_scope": "LOCAL" (una città/provincia), "REGIONAL" (una regione), "NATIONAL" (tutta Italia), "UNKNOWN" se non determinabile
+- "market_region": nome della regione italiana se LOCAL o REGIONAL (es. "Lombardia"), altrimenti null
+- "market_confidence": "HIGH" se il sito lo dichiara esplicitamente (zona di intervento/consegna, sede, "serviamo la provincia di..."), "MEDIUM" se dedotto ragionevolmente, "LOW" se è solo un'ipotesi debole. Senza sito reale o senza indizi geografici: "UNKNOWN"/null/"LOW".
 
-Genera:
-- "analisi_azienda": 2-3 frasi su cosa fa davvero questa azienda secondo quello che hai letto (o, se non hai contenuto reale, una frase che lo dichiara apertamente)
-- "consigli_su_misura": 4-5 consigli CONCRETI per la campagna pubblicitaria, ciascuno un oggetto {{"testo":"...","tipo":"FACT|INFERENCE|SUGGESTION"}} secondo la regola sopra — non genericità valide per qualsiasi azienda del settore
-- una "idea_sicura": basata su pattern collaudati del settore, basso rischio
-- due "idee_audaci": meccanismi creativi presi in prestito da ALTRI settori, applicati in modo pertinente a questo brand
+Genera un oggetto "azienda" con questi campi, ciascuno {{"testo":"...","stato":"RILEVATO|DEDUZIONE|NON_DETERMINABILE"}}:
+- "attivita": cosa vende/fa davvero (1-2 frasi)
+- "area_mercato": zona operativa (es. "Milano e provincia") — coerente con market_scope/market_region sopra
+- "cliente_probabile": chi è probabilmente il cliente tipo, SOLO se deducibile da sito/target indicato
+- "leva_commerciale": l'offerta o il vantaggio commerciale che il sito mette in evidenza (es. "preventivo gratuito"), SOLO se presente
+- "call_to_action": l'azione che il sito chiede al visitatore (es. "chiama ora"), SOLO se rilevabile
+- "punti_distintivi": ARRAY di massimo 3 oggetti {{"testo":"...","stato":"..."}} — cosa distingue questa azienda secondo il sito, non frasi generiche di settore
 
-Tutte le idee devono essere realizzabili su carta stampata o adv editoriale digitale (niente tecnologie non disponibili su questi formati).
+{"Hai anche contenuto REALE del sito di un competitor. Genera \"competitor_confronto\": {\"disponibile\":true,\"tu_comunichi_meglio\":[\"...\"],\"competitor_comunica_meglio\":[\"...\"],\"opportunita\":[\"...\"],\"messaggio_da_possedere\":\"...\"} — 1-3 elementi per lista, differenze COMMERCIALMENTE UTILI (non un'analisi SEO), basate solo su ciò che i due siti dicono davvero. \"messaggio_da_possedere\" è una frase/angolo di comunicazione che l'azienda potrebbe rivendicare rispetto al competitor." if ha_competitor_reale else "Non hai contenuto reale di un competitor: genera \"competitor_confronto\": {\"disponibile\":false}, senza altri campi — non inventare un confronto."}
 
-Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, in questo formato esatto:
-{{"analisi_azienda":"...","market_scope":"LOCAL|REGIONAL|NATIONAL|UNKNOWN","market_region":"Lombardia","market_confidence":"HIGH|MEDIUM|LOW","consigli_su_misura":[{{"testo":"...","tipo":"FACT"}},{{"testo":"...","tipo":"INFERENCE"}}],"idea_sicura":{{"titolo":"...","meccanismo":"...","perche":"..."}},"idee_audaci":[{{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}},{{"titolo":"...","meccanismo":"...","perche":"...","rischio":"...","novita":0}}]}}
+Genera "messaggio_pubblicitario": {{"headline":"...","sottoheadline":"...","cta":"...","argomento_principale":"...","prova_fatto":"..."}} — un messaggio pubblicitario pronto all'uso, basato SOLO su ciò che è realmente disponibile (leva commerciale, prodotto, zona). "prova_fatto" è un elemento concreto e verificabile dal sito (es. "sede a Milano dal ...", non un numero inventato). Se non hai abbastanza materiale reale, usa frasi generiche ma oneste (es. "Richiedi maggiori informazioni") invece di inventare specifiche.
 
-"novita" è un numero da 0 a 100. Scrivi tutti i testi in italiano."""
+Genera "creativita" con tre livelli, ciascuno {{"titolo":"...","perche":"...","dove":"...","messaggio":"...","rischio":"..."}}:
+- "consigliata": l'idea che useresti davvero per QUESTA azienda, basso rischio, coerente col profilo sopra
+- "alternativa": un'idea più distintiva ma ancora ragionevole
+- "audace": un meccanismo preso in prestito da un altro settore, solo come terza opzione
 
-    return prompt, ha_sito_reale
+Tutte le idee devono essere realizzabili su carta stampata o adv editoriale digitale.
+
+Rispondi SOLO con un oggetto JSON valido, nessun testo prima o dopo, con esattamente queste chiavi: analisi_azienda (stringa, 1 frase di sintesi), market_scope, market_region, market_confidence, azienda, competitor_confronto, messaggio_pubblicitario, creativita. Scrivi tutti i testi in italiano."""
+
+    return prompt, ha_sito_reale, ha_competitor_reale
 
 
 @app.post("/api/generate-analysis")
@@ -572,7 +584,7 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
     if not _check_rate_limit(client_key):
         raise HTTPException(status_code=429, detail="Troppe richieste di analisi in poco tempo. Riprova tra qualche minuto.")
 
-    prompt, ha_sito_reale = _build_analysis_prompt(payload)
+    prompt, ha_sito_reale, ha_competitor_reale = _build_analysis_prompt(payload)
 
     try:
         resp = requests.post(
@@ -615,22 +627,8 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
     except Exception:
         raise HTTPException(status_code=502, detail="Risposta AI in un formato inatteso. Riprova.")
 
-    if not isinstance(parsed.get("idea_sicura"), dict) or not isinstance(parsed.get("idee_audaci"), list):
-        raise HTTPException(status_code=502, detail="Risposta AI incompleta. Riprova.")
-
-    consigli_raw = parsed.get("consigli_su_misura")
-    if not isinstance(consigli_raw, list):
-        consigli_raw = []
-    # Normalizza: se il modello risponde con semplici stringhe invece che
-    # {testo, tipo}, non buttiamo via la risposta — etichetta di default
-    # INFERENCE (mai "FACT" per qualcosa di cui non conosciamo la provenienza).
-    consigli = []
-    for c in consigli_raw:
-        if isinstance(c, dict) and "testo" in c:
-            tipo = c.get("tipo") if c.get("tipo") in ("FACT", "INFERENCE", "SUGGESTION") else "INFERENCE"
-            consigli.append({"testo": c["testo"], "tipo": tipo})
-        elif isinstance(c, str):
-            consigli.append({"testo": c, "tipo": "INFERENCE"})
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=502, detail="Risposta AI in un formato inatteso. Riprova.")
 
     # Il raggio d'azione geografico dedotto dall'AI diventa un input
     # strutturato per il motore di allocazione (buildAllocationPlan nel
@@ -647,13 +645,92 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
     if not isinstance(market_region, str) or not market_region.strip() or market_scope not in ("LOCAL", "REGIONAL"):
         market_region = None
 
+    def _campo(v) -> dict:
+        """Normalizza un campo {testo, stato}: mai un'invenzione strutturale
+        anche se il modello sbaglia forma — un campo malformato diventa
+        NON_DETERMINABILE con testo vuoto, mai un testo a caso."""
+        if isinstance(v, dict) and isinstance(v.get("testo"), str):
+            stato = v.get("stato") if v.get("stato") in ("RILEVATO", "DEDUZIONE", "NON_DETERMINABILE") else "DEDUZIONE"
+            testo = v["testo"].strip()
+            if not testo:
+                stato = "NON_DETERMINABILE"
+            return {"testo": testo, "stato": stato}
+        if isinstance(v, str) and v.strip():
+            return {"testo": v.strip(), "stato": "DEDUZIONE"}
+        return {"testo": "", "stato": "NON_DETERMINABILE"}
+
+    azienda_raw = parsed.get("azienda") if isinstance(parsed.get("azienda"), dict) else {}
+    punti_raw = azienda_raw.get("punti_distintivi")
+    punti_distintivi = [_campo(p) for p in punti_raw][:3] if isinstance(punti_raw, list) else []
+    azienda = {
+        "attivita": _campo(azienda_raw.get("attivita")),
+        "area_mercato": _campo(azienda_raw.get("area_mercato")),
+        "cliente_probabile": _campo(azienda_raw.get("cliente_probabile")),
+        "leva_commerciale": _campo(azienda_raw.get("leva_commerciale")),
+        "call_to_action": _campo(azienda_raw.get("call_to_action")),
+        "punti_distintivi": punti_distintivi,
+    }
+
+    # Il confronto competitor è forzato lato server in base a cosa abbiamo
+    # DAVVERO passato al modello (non a cosa il modello dichiara): se non
+    # avevamo testo reale di un competitor, il confronto non può esistere,
+    # a prescindere da cosa il modello ha provato a generare.
+    if ha_competitor_reale and isinstance(parsed.get("competitor_confronto"), dict):
+        cc_raw = parsed["competitor_confronto"]
+        def _lista(v) -> list[str]:
+            if not isinstance(v, list):
+                return []
+            return [str(x).strip() for x in v if isinstance(x, (str, int, float)) and str(x).strip()][:3]
+        competitor_confronto = {
+            "disponibile": True,
+            "tu_comunichi_meglio": _lista(cc_raw.get("tu_comunichi_meglio")),
+            "competitor_comunica_meglio": _lista(cc_raw.get("competitor_comunica_meglio")),
+            "opportunita": _lista(cc_raw.get("opportunita")),
+            "messaggio_da_possedere": cc_raw.get("messaggio_da_possedere") if isinstance(cc_raw.get("messaggio_da_possedere"), str) else "",
+        }
+    else:
+        competitor_confronto = {"disponibile": False}
+
+    mp_raw = parsed.get("messaggio_pubblicitario") if isinstance(parsed.get("messaggio_pubblicitario"), dict) else {}
+    def _testo(v) -> str:
+        return v.strip() if isinstance(v, str) else ""
+    messaggio_pubblicitario = {
+        "headline": _testo(mp_raw.get("headline")),
+        "sottoheadline": _testo(mp_raw.get("sottoheadline")),
+        "cta": _testo(mp_raw.get("cta")),
+        "argomento_principale": _testo(mp_raw.get("argomento_principale")),
+        "prova_fatto": _testo(mp_raw.get("prova_fatto")),
+    }
+
+    def _idea(v) -> dict:
+        if not isinstance(v, dict):
+            v = {}
+        return {
+            "titolo": _testo(v.get("titolo")),
+            "perche": _testo(v.get("perche")),
+            "dove": _testo(v.get("dove")),
+            "messaggio": _testo(v.get("messaggio")),
+            "rischio": _testo(v.get("rischio")),
+        }
+
+    creativita_raw = parsed.get("creativita") if isinstance(parsed.get("creativita"), dict) else {}
+    creativita = {
+        "consigliata": _idea(creativita_raw.get("consigliata")),
+        "alternativa": _idea(creativita_raw.get("alternativa")),
+        "audace": _idea(creativita_raw.get("audace")),
+    }
+
+    if not creativita["consigliata"]["titolo"]:
+        raise HTTPException(status_code=502, detail="Risposta AI incompleta. Riprova.")
+
     return {
-        "analisi_azienda": parsed.get("analisi_azienda", ""),
+        "analisi_azienda": parsed.get("analisi_azienda", "") if isinstance(parsed.get("analisi_azienda"), str) else "",
         "market_scope": market_scope,
         "market_region": market_region,
         "market_confidence": market_confidence,
-        "consigli_su_misura": consigli,
-        "idea_sicura": parsed["idea_sicura"],
-        "idee_audaci": parsed["idee_audaci"],
+        "azienda": azienda,
+        "competitor_confronto": competitor_confronto,
+        "messaggio_pubblicitario": messaggio_pubblicitario,
+        "creativita": creativita,
         "sito_letto_davvero": ha_sito_reale,
     }
