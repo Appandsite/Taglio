@@ -607,6 +607,22 @@ def _canonical_domain(url_or_domain: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+_HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
+
+
+def _sembra_hostname_valido(valore: str) -> bool:
+    """Il modello a volte scrive un commento dentro al campo dominio invece
+    di un dominio pulito (es. "nordovestmilano.it (indicativo, verificare
+    dominio ufficiale)") — osservato in test reale il 9/9/2026. urlparse
+    non lo rifiuta: senza uno spazio o "://" espliciti, hostname resta None
+    e si ricade sulla stringa originale intera, commento compreso, che poi
+    finiva in un link "https://..." rotto nel frontend. Qui verifichiamo
+    che il risultato di _canonical_domain abbia davvero la forma di un
+    hostname (solo lettere/cifre/trattini ed etichette separate da punti)
+    prima di fidarcene."""
+    return bool(_HOSTNAME_RE.match(valore))
+
+
 def _load_media_catalog() -> dict:
     if not MEDIA_CATALOG_FILE.exists():
         return {}
@@ -1251,7 +1267,7 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
                 canonical = _canonical_domain(str(m["dominio"]))
             except Exception:
                 continue
-            if not canonical or "." not in canonical or canonical in visti_domini:
+            if not canonical or not _sembra_hostname_valido(canonical) or canonical in visti_domini:
                 continue
             visti_domini.add(canonical)
             media_normalizzati.append({
