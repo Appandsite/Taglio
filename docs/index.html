@@ -585,7 +585,7 @@
       <div class="competitor-list" id="competitorList"></div>
 
       <div class="add-competitor">
-        <input type="text" id="competitorInput" placeholder="Nome competitor o sito web">
+        <input type="text" id="competitorInput" placeholder="Nome competitor o sito web" onkeydown="if(event.key==='Enter'){event.preventDefault();addCompetitor();}">
         <button class="btn btn-primary" onclick="addCompetitor()">Aggiungi</button>
       </div>
 
@@ -949,7 +949,14 @@
     }
   })();
 
-  const state = { tone:null, competitors:[], obiettivo:'awareness', budget:15000 };
+  // tone deve restare una stringa fin dall'inizio, mai null: il backend
+  // dichiara GenerateAnalysisRequest.tone come "str" — quando il campo è
+  // presente nel corpo JSON con valore null, Pydantic lo rifiuta con
+  // "Input should be a valid string" invece di usare il default, perché il
+  // default vale solo se il campo è assente, non se è null (causa reale di
+  // un 422 in produzione il 10/9/2026, quando l'utente non toccava mai i
+  // chip del tono di voce).
+  const state = { tone:'', competitors:[], obiettivo:'awareness', budget:15000 };
 
   document.querySelectorAll('#toneRow .chip').forEach(chip=>{
     chip.addEventListener('click', ()=>{
@@ -1028,6 +1035,18 @@
   function normalizzaUrl(testo){
     const t = testo.trim();
     return /^https?:\/\//i.test(t) ? t : 'https://' + t;
+  }
+
+  // Deriva un nome leggibile dal <title> di un sito quando l'utente ha
+  // inserito solo un URL (azienda o competitor) senza scrivere un nome —
+  // deterministico e non dipendente dall'AI, così l'identità resta
+  // disponibile anche se l'analisi AI fallisce (istruzioni 10/9/2026, punti
+  // 4-5). I title reali sono quasi sempre "Nome | descrizione" o simili: si
+  // prende la prima parte prima del separatore.
+  function nomeAziendaDaTitolo(title){
+    if(!title) return null;
+    const primaParte = title.split(/[|\-–—:]/)[0].trim();
+    return primaParte || null;
   }
 
   // Va all'endpoint del backend (mai fetch diretta dal browser: la maggior
@@ -1163,6 +1182,15 @@
     const puoProcedere = await consumaRicercaSeConsentito();
     if(!puoProcedere) return;
 
+    // Un competitor digitato ma mai "Aggiunto" (utente che scrive e poi
+    // clicca direttamente "Avvia analisi", senza premere Invio né il
+    // pulsante Aggiungi) restava solo nel campo di testo e non entrava mai
+    // in state.competitors: il report mostrava poi "Non hai indicato un
+    // competitor" nonostante l'utente lo avesse scritto — bug reale
+    // osservato in produzione il 10/9/2026. Qui lo recuperiamo prima di
+    // costruire il SEARCH, così l'input dell'utente non va mai perso.
+    addCompetitor();
+
     searchCounter += 1;
     const mySearchId = 'search-' + Date.now() + '-' + searchCounter;
 
@@ -1202,10 +1230,11 @@
     // apposta: senza, il browser mostrava "Automotive" già selezionato e un
     // utente che non lo toccava si vedeva analizzato come automotive anche
     // vendendo tutt'altro (bug reale osservato il 9/9/2026).
+    const nomeAziendaInserito = document.getElementById('companyName').value.trim();
     const search = {
       searchId: mySearchId,
       sectorKey: document.getElementById('sector').value || '',
-      name: document.getElementById('companyName').value.trim() || 'la tua azienda',
+      name: nomeAziendaInserito || 'la tua azienda',
       website: document.getElementById('website').value.trim(),
       prodotto: document.getElementById('prodotto').value.trim(),
       zonaGeografica: document.getElementById('zonaGeografica').value.trim(),
@@ -1234,6 +1263,35 @@
       search.sitoAzienda = sitoAzienda;
       search.sitiCompetitor = sitiCompetitor.filter(Boolean);
       search.sectorLabel = sectorLabel;
+      // Se l'utente ha inserito solo l'URL dell'azienda (senza scrivere un
+      // "Nome azienda"), risolviamo un'identità reale dal <title> del sito
+      // appena letto invece di lasciare per sempre il segnaposto generico
+      // "la tua azienda" — deterministico, non dipende dall'AI, quindi resta
+      // valido anche se l'analisi AI fallisce (istruzioni 10/9/2026, punto
+      // 4: "mai la tua azienda se un URL valido è stato letto con successo").
+      if(!nomeAziendaInserito && sitoAzienda && sitoAzienda.title){
+        const nomeDaTitolo = nomeAziendaDaTitolo(sitoAzienda.title);
+        if(nomeDaTitolo) search.name = nomeDaTitolo;
+      }
+      // Stessa logica per il competitor mostrato in intestazione: se
+      // l'utente ha scritto un URL invece di un nome, mostriamo il nome
+      // reale letto dal sito (con l'URL a fianco) invece dell'URL grezzo —
+      // vale anche in caso di fallimento AI (istruzioni 10/9/2026, punto 5).
+      const primoCompetitorInserito = search.competitors[0] || null;
+      search.competitorPrincipale = null;
+      if(primoCompetitorInserito){
+        search.competitorPrincipale = { nome: primoCompetitorInserito, url: null };
+        if(pareUnUrl(primoCompetitorInserito)){
+          const urlNormalizzato = normalizzaUrl(primoCompetitorInserito);
+          const idx = competitorUrls.indexOf(urlNormalizzato);
+          const sitoCompetitorPrincipale = idx >= 0 ? sitiCompetitor[idx] : null;
+          search.competitorPrincipale.url = urlNormalizzato;
+          if(sitoCompetitorPrincipale && sitoCompetitorPrincipale.title){
+            const nomeDaTitolo = nomeAziendaDaTitolo(sitoCompetitorPrincipale.title);
+            if(nomeDaTitolo) search.competitorPrincipale.nome = nomeDaTitolo;
+          }
+        }
+      }
       return generateIdeasWithAI(search);
     }).catch(err=>{
       // Niente fallback mock: un errore AI resta un errore, mostrato come
@@ -1254,8 +1312,8 @@
       // due ricerche avviate in rapida successione.
       if(myCounterValue !== searchCounter) return;
       ultimoPayloadAnalisi = search;
-      ultimoContestoRisultati = { sectorLabel, name: search.name, competitors: search.competitors.slice(), budget: search.budget };
-      renderReport({ sectorLabel, name: search.name, budget: search.budget, ideas, erroreAI });
+      ultimoContestoRisultati = { sectorLabel, name: search.name, competitors: search.competitors.slice(), competitorPrincipale: search.competitorPrincipale, budget: search.budget };
+      renderReport({ sectorLabel, name: search.name, competitorPrincipale: search.competitorPrincipale, budget: search.budget, ideas, erroreAI });
     }, 300);
   }
 
@@ -1311,17 +1369,25 @@
       })
     });
     if(!response.ok){
-      // "detail" di FastAPI può essere una stringa (i nostri errori gestiti,
-      // es. "chiave Anthropic mancante") o un ARRAY di oggetti di validazione
-      // Pydantic ({loc, msg, type}, es. se un campo supera un max_length):
-      // new Error(array) stringifica ogni oggetto come "[object Object]" —
-      // bug reale osservato in test pubblico (vedi istruzioni del 9/9/2026).
+      // "detail" di FastAPI può essere una stringa (i nostri errori gestiti
+      // a mano, es. "chiave Anthropic mancante" — già scritti in italiano
+      // per un utente reale, sicuri da mostrare) oppure un ARRAY di oggetti
+      // di validazione Pydantic ({loc, msg, type}), che compare quando un
+      // campo del payload non rispetta il contratto atteso (es. null dove
+      // serve una stringa): quell'array contiene messaggi tecnici interni
+      // come "Input should be a valid string", mai pensati per un utente
+      // finale — mostrarli in chiaro è un bug reale osservato in produzione
+      // il 10/9/2026 (istruzioni, punto 8). Il dettaglio tecnico resta solo
+      // nel log della console per chi sviluppa; l'utente vede sempre un
+      // messaggio generico.
       let dettaglio = '';
       try{
         const corpo = (await response.json()).detail;
         if(typeof corpo === 'string') dettaglio = corpo;
-        else if(Array.isArray(corpo)) dettaglio = corpo.map(e => (e && e.msg) ? e.msg : JSON.stringify(e)).join('; ');
-        else if(corpo) dettaglio = JSON.stringify(corpo);
+        else if(Array.isArray(corpo)){
+          console.error('generate-analysis: validazione fallita', corpo);
+          dettaglio = 'Dati non validi inviati al motore AI.';
+        } else if(corpo) dettaglio = JSON.stringify(corpo);
       } catch(e){}
       throw new Error(dettaglio || ('Errore backend: ' + response.status));
     }
@@ -1415,8 +1481,14 @@
     el.innerHTML = html;
   }
 
-  function renderSezioneCompetitor(ideas, competitorInseriti, erroreAI){
-    const nomeCompetitor = (competitorInseriti && competitorInseriti.length) ? competitorInseriti[0] : null;
+  function renderSezioneCompetitor(ideas, competitorPrincipale, erroreAI){
+    // competitorPrincipale = { nome, url } risolto in runAnalysis (nome
+    // reale dal <title> del sito se l'utente ha scritto un URL, altrimenti
+    // il testo inserito) — mai il semplice testo grezzo, altrimenti un
+    // competitor inserito come URL mostrava l'URL al posto del nome, e un
+    // fallimento AI perdeva l'informazione (bug reale, istruzioni 10/9/2026,
+    // punto 5).
+    const nomeCompetitor = competitorPrincipale ? competitorPrincipale.nome : null;
     document.getElementById('seccCompetitorTitolo').textContent = nomeCompetitor ? `Tu vs ${nomeCompetitor}` : 'Confronto competitor';
     const el = document.getElementById('competitorBody');
 
@@ -1424,8 +1496,9 @@
       el.innerHTML = '<p class="step-intro" style="margin-bottom:0;">Non hai indicato un competitor: aggiungine uno nel wizard per un confronto diretto.</p>';
       return;
     }
+    const urlRiga = competitorPrincipale.url ? `<br><span class="alloc-format">${escapeXml(competitorPrincipale.url)}</span>` : '';
     if(!ideas){
-      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Confronto con ${escapeXml(nomeCompetitor)} non disponibile: l'analisi AI non è riuscita questa volta${erroreAI ? ' (' + escapeXml(erroreAI) + ')' : ''}. Il competitor indicato resta salvato — riprova l'analisi AI qui sopra.</p>`;
+      el.innerHTML = `<p class="step-intro" style="margin-bottom:0;">Competitor: <strong>${escapeXml(nomeCompetitor)}</strong>${urlRiga}<br>Confronto non disponibile: l'analisi AI non è riuscita questa volta. Il competitor indicato resta salvato — riprova l'analisi AI qui sopra.</p>`;
       return;
     }
     const cc = ideas.competitor_confronto || { disponibile: false };
@@ -1634,7 +1707,18 @@
 
   function renderSezioneAzioni(ideas){
     const el = document.getElementById('azioniBody');
-    const opp = ideas ? (ideas.opportunita_migliori || []) : [];
+    // Senza analisi AI non esiste nessuna azione personalizzata da
+    // suggerire: prima di questo controllo, le 3 righe sotto ricadevano
+    // sempre sui loro rami "else" generici ("valuta di alzare il budget",
+    // "prepara una creatività chiara", "misura le richieste") anche quando
+    // ideas era null, mostrando consigli strategici finti come se fossero
+    // basati sui dati dell'azienda — bug reale, istruzioni 10/9/2026, punto
+    // 7: "no generic recommendations after AI failure".
+    if(!ideas){
+      el.innerHTML = '<p class="step-intro" style="margin-bottom:0;">Non disponibile senza analisi AI. Riprova qui sopra.</p>';
+      return;
+    }
+    const opp = ideas.opportunita_migliori || [];
     const azioni = [];
     if(opp.length){
       const prima = opp[0];
@@ -1680,7 +1764,15 @@
     document.getElementById('resultsView').style.display = 'block';
 
     document.getElementById('resultsHeadline').textContent = 'Il tuo piano di posizionamento';
-    document.getElementById('resultsIntro').textContent = `Analisi per ${ctx.name}, settore ${ctx.sectorLabel}, budget € ${ctx.budget.toLocaleString('it-IT')}.`;
+    // Se l'utente ha lasciato il menu Settore vuoto ma l'AI ha determinato
+    // davvero il sotto-settore dal sito letto, mostriamo quello reale invece
+    // del segnaposto generico "il tuo settore" — altrimenti l'intestazione
+    // resta generica anche quando il corpo del report (sezione azienda)
+    // mostra già il sotto-settore corretto (istruzioni 10/9/2026, punto 10:
+    // "'il tuo settore' quando il sito è stato capito con successo = FAIL").
+    const sottoSettoreAI = ctx.ideas && ctx.ideas.azienda && ctx.ideas.azienda.subsector && ctx.ideas.azienda.subsector.testo;
+    const settoreVisualizzato = sottoSettoreAI || ctx.sectorLabel;
+    document.getElementById('resultsIntro').textContent = `Analisi per ${ctx.name}, settore ${settoreVisualizzato}, budget € ${ctx.budget.toLocaleString('it-IT')}.`;
 
     const datasetLineEl = document.getElementById('datasetStatusLine');
     if(datasetLineEl) datasetLineEl.textContent = formattaRigaDatasetStatus();
@@ -1696,7 +1788,7 @@
     }
 
     renderSezioneAzienda(ctx.ideas, ctx.name, ctx.erroreAI);
-    renderSezioneCompetitor(ctx.ideas, ctx.competitors, ctx.erroreAI);
+    renderSezioneCompetitor(ctx.ideas, ctx.competitorPrincipale, ctx.erroreAI);
     renderSezioneCliente(ctx.ideas, ctx.erroreAI);
     renderSezioneDoveCercherei(ctx.ideas, ctx.erroreAI);
     renderSezioneMediaScoperti(ctx.ideas);

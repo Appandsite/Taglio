@@ -1078,6 +1078,10 @@ def generate_analysis(payload: GenerateAnalysisRequest, request: Request):
     if resp.status_code != 200:
         # Mai esporre il corpo grezzo della risposta di Anthropic al client:
         # solo un messaggio generico, i dettagli restano nei log del server.
+        # (Il commento diceva già così ma mancava la riga di log vera e
+        # propria — aggiunta il 10/9/2026 per poter diagnosticare fallimenti
+        # rapidi, es. rate limit o richiesta rifiutata, senza dover indovinare.)
+        logger.error("generate-analysis: Anthropic ha risposto %s: %r", resp.status_code, resp.text[:500])
         raise HTTPException(status_code=502, detail="Il motore AI ha risposto con un errore. Riprova più tardi.")
 
     data: dict = {}
