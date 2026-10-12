@@ -1,5 +1,5 @@
 {
-  "ultimo_run_timestamp_utc": "2026-10-05T04:31:52.650079+00:00",
+  "ultimo_run_timestamp_utc": "2026-10-12T11:57:48.886359+00:00",
   "ultimo_run_esito": "OK",
   "ultimo_run_motivi_scarto": [],
   "ultimo_run_testate_configurate": 67,
@@ -12,7 +12,6 @@
     "Corriere Adriatico",
     "Corriere della Sera",
     "Corriere dello Sport",
-    "DDay.it",
     "DiPiù",
     "Domani",
     "Elle Italia",
@@ -22,11 +21,11 @@
     "Gente",
     "Giornale di Sicilia",
     "HDblog",
-    "Il Fatto Quotidiano",
     "Il Giornale",
     "Il Mattino",
     "Il Messaggero",
     "Il Piccolo",
+    "Il Quotidiano del Sud",
     "Il Sole 24 Ore",
     "Il Tempo",
     "Internazionale",
@@ -52,6 +51,6 @@
     "Wired Italia"
   ],
   "ultimo_run_testate_nel_dataset_candidato": 46,
-  "ultimo_aggiornamento": "2026-10-05",
-  "ultimo_aggiornamento_timestamp_utc": "2026-10-05T04:31:52.650079+00:00"
+  "ultimo_aggiornamento": "2026-10-12",
+  "ultimo_aggiornamento_timestamp_utc": "2026-10-12T11:57:48.886359+00:00"
 }
