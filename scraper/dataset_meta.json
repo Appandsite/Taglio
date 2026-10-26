@@ -1,5 +1,5 @@
 {
-  "ultimo_run_timestamp_utc": "2026-10-19T09:54:23.395929+00:00",
+  "ultimo_run_timestamp_utc": "2026-10-26T10:06:19.574788+00:00",
   "ultimo_run_esito": "OK",
   "ultimo_run_motivi_scarto": [],
   "ultimo_run_testate_configurate": 67,
@@ -35,7 +35,6 @@
     "Italia Oggi",
     "L'Eco di Bergamo",
     "L'Espresso",
-    "L'Unione Sarda",
     "La Cucina Italiana",
     "La Gazzetta del Mezzogiorno",
     "La Gazzetta dello Sport",
@@ -53,6 +52,6 @@
     "Wired Italia"
   ],
   "ultimo_run_testate_nel_dataset_candidato": 46,
-  "ultimo_aggiornamento": "2026-10-19",
-  "ultimo_aggiornamento_timestamp_utc": "2026-10-19T09:54:23.395929+00:00"
+  "ultimo_aggiornamento": "2026-10-26",
+  "ultimo_aggiornamento_timestamp_utc": "2026-10-26T10:06:19.574788+00:00"
 }
