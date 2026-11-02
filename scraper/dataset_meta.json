@@ -1,5 +1,5 @@
 {
-  "ultimo_run_timestamp_utc": "2026-10-26T10:06:19.574788+00:00",
+  "ultimo_run_timestamp_utc": "2026-11-02T12:21:04.723748+00:00",
   "ultimo_run_esito": "OK",
   "ultimo_run_motivi_scarto": [],
   "ultimo_run_testate_configurate": 67,
@@ -13,7 +13,6 @@
     "Corriere della Sera",
     "Corriere dello Sport",
     "DDay.it",
-    "DiPiù",
     "Domani",
     "Elle Italia",
     "Famiglia Cristiana",
@@ -35,13 +34,13 @@
     "Italia Oggi",
     "L'Eco di Bergamo",
     "L'Espresso",
+    "L'Unione Sarda",
     "La Cucina Italiana",
     "La Gazzetta del Mezzogiorno",
     "La Gazzetta dello Sport",
     "La Nuova Sardegna",
     "La Repubblica",
     "La Stampa",
-    "Libero Quotidiano",
     "MF Milano Finanza",
     "Oggi",
     "Punto Informatico",
@@ -52,6 +51,6 @@
     "Wired Italia"
   ],
   "ultimo_run_testate_nel_dataset_candidato": 46,
-  "ultimo_aggiornamento": "2026-10-26",
-  "ultimo_aggiornamento_timestamp_utc": "2026-10-26T10:06:19.574788+00:00"
+  "ultimo_aggiornamento": "2026-11-02",
+  "ultimo_aggiornamento_timestamp_utc": "2026-11-02T12:21:04.723748+00:00"
 }
