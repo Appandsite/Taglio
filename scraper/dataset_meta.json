@@ -1,5 +1,5 @@
 {
-  "ultimo_run_timestamp_utc": "2026-11-09T12:49:47.147471+00:00",
+  "ultimo_run_timestamp_utc": "2026-11-16T12:44:08.343252+00:00",
   "ultimo_run_esito": "OK",
   "ultimo_run_motivi_scarto": [],
   "ultimo_run_testate_configurate": 67,
@@ -53,6 +53,6 @@
     "Wired Italia"
   ],
   "ultimo_run_testate_nel_dataset_candidato": 46,
-  "ultimo_aggiornamento": "2026-11-09",
-  "ultimo_aggiornamento_timestamp_utc": "2026-11-09T12:49:47.147471+00:00"
+  "ultimo_aggiornamento": "2026-11-16",
+  "ultimo_aggiornamento_timestamp_utc": "2026-11-16T12:44:08.343252+00:00"
 }
